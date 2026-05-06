@@ -37,15 +37,40 @@ def build_indicator_graph(
     """
     if not _PYVIS_AVAILABLE:
         raise ImportError("pyvis is not installed. Run: pip install pyvis")
-
-    net = Network(height="700px", width="100%", directed=True, notebook=False)
-    net.set_options("""
+    
+    physics_config = """
     {
-      "physics": {"stabilization": {"iterations": 100}},
+      "physics": {
+        "stabilization": {"iterations": 500, "updateInterval": 25},
+        "barnesHut": {
+          "gravitationalConstant": -8000,
+          "springConstant": 0.04,
+          "damping": 0.95
+        }
+      },
       "edges": {"arrows": {"to": {"enabled": true, "scaleFactor": 0.5}}},
       "interaction": {"hover": true, "navigationButtons": true}
     }
-    """)
+    """
+    
+    if max_nodes > 200:
+        physics_config = """
+        {
+          "physics": {
+            "stabilization": {"iterations": 1000, "updateInterval": 50},
+            "barnesHut": {
+              "gravitationalConstant": -12000,
+              "springConstant": 0.02,
+              "damping": 0.98
+            }
+          },
+          "edges": {"arrows": {"to": {"enabled": true, "scaleFactor": 0.5}}},
+          "interaction": {"hover": true, "navigationButtons": true}
+        }
+        """
+
+    net = Network(height="700px", width="100%", directed=True, notebook=False)
+    net.set_options(physics_config)
 
     added_inds: set[str] = set()
     added_tables: set[str] = set()
@@ -144,6 +169,20 @@ def build_cell_subgraph(
 
     subg = g.subgraph(neighbors)
     net = Network(height="600px", width="100%", directed=True, notebook=False)
+    net.set_options("""
+    {
+      "physics": {
+        "stabilization": {"iterations": 500, "updateInterval": 25},
+        "barnesHut": {
+          "gravitationalConstant": -8000,
+          "springConstant": 0.04,
+          "damping": 0.95
+        }
+      },
+      "edges": {"arrows": {"to": {"enabled": true, "scaleFactor": 0.5}}},
+      "interaction": {"hover": true, "navigationButtons": true}
+    }
+    """)
 
     for node in subg.nodes:
         cell = graph.cells.get(node)
@@ -176,7 +215,14 @@ def build_table_graph(
     net = Network(height="600px", width="100%", directed=True, notebook=False)
     net.set_options("""
     {
-      "physics": {"stabilization": {"iterations": 100}},
+      "physics": {
+        "stabilization": {"iterations": 500, "updateInterval": 25},
+        "barnesHut": {
+          "gravitationalConstant": -8000,
+          "springConstant": 0.04,
+          "damping": 0.95
+        }
+      },
       "edges": {"arrows": {"to": {"enabled": true, "scaleFactor": 0.5}}},
       "interaction": {"hover": true, "navigationButtons": true}
     }
@@ -225,22 +271,53 @@ def build_table_graph(
 def build_indicator_subgraph(
     graph: FinancialGraph,
     table_id: str,
+    node_count: Optional[int] = None,
     output_path: Optional[str] = None,
 ) -> str:
-    """Build a pyvis HTML showing Indicator nodes for a table + CALCULATES_FROM edges."""
+    """Build a pyvis HTML showing Indicator nodes for a table + CALCULATES_FROM edges.
+    
+    node_count: Optional pre-calculated node count for adaptive physics tuning.
+    """
     if not _PYVIS_AVAILABLE:
         raise ImportError("pyvis is not installed.")
 
-    net = Network(height="600px", width="100%", directed=True, notebook=False)
-    net.set_options("""
+    tbl = graph.tables.get(table_id)
+    in_table: set[str] = set(tbl.indicator_ids) if tbl else set()
+    
+    actual_node_count = node_count or len(in_table)
+    physics_config = """
     {
-      "physics": {"stabilization": {"iterations": 100}},
+      "physics": {
+        "stabilization": {"iterations": 500, "updateInterval": 25},
+        "barnesHut": {
+          "gravitationalConstant": -8000,
+          "springConstant": 0.04,
+          "damping": 0.95
+        }
+      },
       "edges": {"arrows": {"to": {"enabled": true, "scaleFactor": 0.5}}},
       "interaction": {"hover": true, "navigationButtons": true}
     }
-    """)
+    """
+    
+    if actual_node_count > 200:
+        physics_config = """
+        {
+          "physics": {
+            "stabilization": {"iterations": 1000, "updateInterval": 50},
+            "barnesHut": {
+              "gravitationalConstant": -12000,
+              "springConstant": 0.02,
+              "damping": 0.98
+            }
+          },
+          "edges": {"arrows": {"to": {"enabled": true, "scaleFactor": 0.5}}},
+          "interaction": {"hover": true, "navigationButtons": true}
+        }
+        """
 
-    tbl = graph.tables.get(table_id)
+    net = Network(height="600px", width="100%", directed=True, notebook=False)
+    net.set_options(physics_config)
     in_table: set[str] = set(tbl.indicator_ids) if tbl else set()
 
     for ind_id in in_table:
@@ -297,16 +374,43 @@ def build_indicator_cell_graph(
     if not _PYVIS_AVAILABLE:
         raise ImportError("pyvis is not installed.")
 
-    net = Network(height="600px", width="100%", directed=True, notebook=False)
-    net.set_options("""
+    ind = graph.indicators.get(indicator_id)
+    in_indicator: set[str] = set(ind.cell_ids) if ind else set()
+    
+    cell_count = len(in_indicator)
+    physics_config = """
     {
-      "physics": {"stabilization": {"iterations": 100}},
+      "physics": {
+        "stabilization": {"iterations": 500, "updateInterval": 25},
+        "barnesHut": {
+          "gravitationalConstant": -8000,
+          "springConstant": 0.04,
+          "damping": 0.95
+        }
+      },
       "edges": {"arrows": {"to": {"enabled": true, "scaleFactor": 0.5}}},
       "interaction": {"hover": true, "navigationButtons": true}
     }
-    """)
+    """
+    
+    if cell_count > 100:
+        physics_config = """
+        {
+          "physics": {
+            "stabilization": {"iterations": 1000, "updateInterval": 50},
+            "barnesHut": {
+              "gravitationalConstant": -12000,
+              "springConstant": 0.02,
+              "damping": 0.98
+            }
+          },
+          "edges": {"arrows": {"to": {"enabled": true, "scaleFactor": 0.5}}},
+          "interaction": {"hover": true, "navigationButtons": true}
+        }
+        """
 
-    ind = graph.indicators.get(indicator_id)
+    net = Network(height="600px", width="100%", directed=True, notebook=False)
+    net.set_options(physics_config)
     in_indicator: set[str] = set(ind.cell_ids) if ind else set()
 
     for cell_id in in_indicator:

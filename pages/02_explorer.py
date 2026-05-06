@@ -171,6 +171,9 @@ elif nav["indicator"]:
         st.dataframe(rows, use_container_width=True)
 
     if st.button("生成 Cell 关系图"):
+        cell_count = len(cells_in_ind)
+        if cell_count > 100:
+            st.info(f"检测到 {cell_count} 个 Cell，已启用增强稳定化模式")
         with st.spinner("渲染中..."):
             _render_html(build_indicator_cell_graph(graph, nav["indicator"]))
 
@@ -205,7 +208,10 @@ elif nav["table"]:
 
     if st.button("生成指标关系图"):
         with st.spinner("渲染中..."):
-            _render_html(build_indicator_subgraph(graph, nav["table"]))
+            node_count = len(inds_in_table)
+            if node_count > 200:
+                st.info(f"检测到 {node_count} 个指标，已启用增强稳定化模式")
+            _render_html(build_indicator_subgraph(graph, nav["table"], node_count=node_count))
 
 # Sheet level
 elif nav["sheet"]:
