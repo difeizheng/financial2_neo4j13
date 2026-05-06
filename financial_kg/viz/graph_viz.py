@@ -25,30 +25,23 @@ _NODE_CLICK_SCRIPT = """
                     var nodeId = params.nodes[0];
                     console.log('Node clicked:', nodeId);
                     
-                    // Create hidden input and trigger Streamlit re-render
-                    var existingInput = window.parent.document.getElementById('kg_clicked_node');
-                    if (existingInput) {
-                        existingInput.value = nodeId;
-                        // Trigger change event for Streamlit
-                        existingInput.dispatchEvent(new Event('input', {bubbles: true}));
-                        existingInput.dispatchEvent(new Event('change', {bubbles: true}));
-                    } else {
-                        console.warn('Hidden input not found in parent document');
-                        // Fallback: use URL
-                        try {
-                            var url = new URL(window.parent.location.href);
-                            url.searchParams.set('kg_node_click', nodeId);
-                            window.parent.history.pushState({}, '', url);
-                            window.parent.location.reload();
-                        } catch(e) {
-                            console.error('URL fallback failed:', e);
+                    // Use localStorage as communication bridge
+                    try {
+                        localStorage.setItem('kg_clicked_node', nodeId);
+                        localStorage.setItem('kg_click_timestamp', Date.now());
+                        // Force parent window to detect the change
+                        if (window.parent && window.parent !== window) {
+                            window.parent.postMessage({type: 'kg_node_click', nodeId: nodeId}, '*');
                         }
+                        // Visual feedback in graph
+                        window.network.selectNodes([nodeId]);
+                    } catch(e) {
+                        console.error('Failed to save click data:', e);
                     }
                 }
             });
         }
     }, 200);
-    // Stop checking after 5 seconds
     setTimeout(function() { clearInterval(checkInterval); }, 5000);
 })();
 </script>

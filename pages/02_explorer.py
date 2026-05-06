@@ -43,32 +43,50 @@ def _load(task_id: str, output_dir: str):
 graph = _load(task.id, task.output_dir)
 stats = graph.stats()
 
-# ── Create hidden input for receiving graph clicks ─────────────────────────────
-st.markdown("""
-<input type="hidden" id="kg_clicked_node" value="" />
+# ── localStorage bridge for receiving graph clicks ─────────────────────────────
+# This invisible component monitors localStorage and updates URL when node clicked
+localStorage_bridge = """
 <script>
-// Listen for changes on the hidden input
-document.getElementById('kg_clicked_node').addEventListener('change', function(e) {
-    // The value will be picked up by Streamlit via st.text_input below
-    console.log('Hidden input changed:', e.target.value);
-});
+(function() {
+    var lastTimestamp = 0;
+    
+    // Monitor localStorage for graph node clicks
+    var monitorInterval = setInterval(function() {
+        try {
+            var timestamp = parseInt(localStorage.getItem('kg_click_timestamp') || '0');
+            if (timestamp > lastTimestamp) {
+                lastTimestamp = timestamp;
+                var nodeId = localStorage.getItem('kg_clicked_node');
+                console.log('Detected click from localStorage:', nodeId);
+                
+                // Update URL to trigger Streamlit navigation
+                var url = new URL(window.location.href);
+                url.searchParams.set('kg_node_click', nodeId);
+                window.location.href = url.toString();
+            }
+        } catch(e) {
+            console.error('localStorage monitoring failed:', e);
+        }
+    }, 500);
+    
+    // Stop monitoring after 60 seconds
+    setTimeout(function() { clearInterval(monitorInterval); }, 60000);
+})();
 </script>
-""", unsafe_allow_html=True)
+"""
+components.html(localStorage_bridge, height=0)
 
-# Invisible text_input to receive node click (key must match hidden input id)
-clicked_node_input = st.text_input("", "", key="kg_clicked_node", label_visibility="collapsed")
-
-# ── Handle graph node click ────────────────────────────────────────────────
+# ── Handle graph node click from URL ────────────────────────────────────────
 clicked_node_id = None
 
-# Check hidden input value
-if clicked_node_input and clicked_node_input.strip():
-    clicked_node_id = clicked_node_input.strip()
-    st.session_state["kg_clicked_node"] = ""  # Clear after handling
-
-# Fallback: check URL parameters
-elif "kg_node_click" in st.query_params:
+# Check URL parameters (set by localStorage bridge)
+if "kg_node_click" in st.query_params:
     clicked_node_id = st.query_params["kg_node_click"]
+    # Clear URL parameter immediately to avoid repeated navigation
+    try:
+        st.query_params.pop("kg_node_click")
+    except:
+        pass
 
 if clicked_node_id:
     
