@@ -51,41 +51,65 @@ if _NAV_KEY not in st.session_state:
 nav = st.session_state[_NAV_KEY]
 
 # ── localStorage bridge for receiving graph clicks ─────────────────────────────
-# This invisible component monitors localStorage and updates URL when node clicked
+# This component monitors localStorage and updates URL when node clicked
 localStorage_bridge = """
+<div id="kg_bridge_status" style="background:#f0f0f0;padding:2px;font-size:9px;color:#999;text-align:center;">
+  等待图谱节点点击...
+</div>
 <script>
 (function() {
+    console.log('[Bridge] Component loaded successfully');
+    
+    var statusDiv = document.getElementById('kg_bridge_status');
     var lastTimestamp = 0;
     
-    // Monitor localStorage for graph node clicks
+    function updateStatus(msg) {
+        if (statusDiv) {
+            statusDiv.textContent = msg;
+            statusDiv.style.background = '#e8f5e9';
+            statusDiv.style.color = '#2e7d32';
+        }
+        try {
+            window.parent.console.log('[Bridge] ' + msg);
+        } catch(e) {}
+    }
+    
+    updateStatus('监听中... (点击图谱节点测试)');
+    
     var monitorInterval = setInterval(function() {
         try {
             var timestamp = parseInt(localStorage.getItem('kg_click_timestamp') || '0');
             if (timestamp > lastTimestamp) {
                 lastTimestamp = timestamp;
                 var nodeId = localStorage.getItem('kg_clicked_node');
-                console.log('Detected click from localStorage:', nodeId);
                 
-                // Method 1: URL parameter + reload
-                var currentUrl = window.location.href;
-                var separator = currentUrl.indexOf('?') > -1 ? '&' : '?';
-                var newUrl = currentUrl.split('?')[0] + separator + 'kg_node_click=' + encodeURIComponent(nodeId);
-                console.log('Navigating to:', newUrl);
+                updateStatus('检测到点击: ' + nodeId);
+                console.log('[Bridge] Node clicked:', nodeId);
                 
-                // Force navigation (works in most environments)
-                window.location.assign(newUrl);
+                var baseUrl = window.location.href.split('?')[0];
+                var newUrl = baseUrl + '?kg_node_click=' + encodeURIComponent(nodeId);
+                
+                console.log('[Bridge] Navigating to:', newUrl);
+                updateStatus('跳转到: ' + nodeId.substring(0, 30));
+                
+                setTimeout(function() {
+                    window.location.assign(newUrl);
+                }, 200);
             }
         } catch(e) {
-            console.error('localStorage monitoring failed:', e);
+            console.error('[Bridge] Error:', e);
+            updateStatus('错误: ' + e.message);
         }
     }, 500);
     
-    // Stop monitoring after 60 seconds
-    setTimeout(function() { clearInterval(monitorInterval); }, 60000);
+    setTimeout(function() { 
+        clearInterval(monitorInterval);
+        updateStatus('监听已停止 (60秒超时)');
+    }, 60000);
 })();
 </script>
 """
-components.html(localStorage_bridge, height=0)
+components.html(localStorage_bridge, height=50)
 
 # ── Handle graph node click from URL ────────────────────────────────────────
 clicked_node_id = None
