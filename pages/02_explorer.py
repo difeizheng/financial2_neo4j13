@@ -50,87 +50,57 @@ if _NAV_KEY not in st.session_state:
 
 nav = st.session_state[_NAV_KEY]
 
-# ── localStorage bridge for receiving graph clicks ─────────────────────────────
-# This component monitors localStorage and updates URL when node clicked
-localStorage_bridge = """
-<div id="kg_bridge_status" style="background:#f0f0f0;padding:2px;font-size:9px;color:#999;text-align:center;">
-  等待图谱节点点击...
-</div>
+# ── postMessage listener for iframe communication ────────────────────────────
+# Standard cross-iframe communication: iframe sends message, main window receives
+postMessage_listener = """
 <script>
 (function() {
-    console.log('[Bridge] Component loaded successfully');
+    console.log('[Listener] Setting up postMessage handler');
     
-    var statusDiv = document.getElementById('kg_bridge_status');
-    var lastTimestamp = 0;
-    
-    function updateStatus(msg) {
-        if (statusDiv) {
-            statusDiv.textContent = msg;
-            statusDiv.style.background = '#e8f5e9';
-            statusDiv.style.color = '#2e7d32';
-        }
-        try {
-            window.parent.console.log('[Bridge] ' + msg);
-        } catch(e) {
-            console.log('[Bridge] ' + msg);
-        }
-    }
-    
-    updateStatus('监听中... (点击图谱节点测试)');
-    
-    var monitorInterval = setInterval(function() {
-        try {
-            var timestamp = parseInt(localStorage.getItem('kg_click_timestamp') || '0');
-            if (timestamp > lastTimestamp) {
-                lastTimestamp = timestamp;
-                var nodeId = localStorage.getItem('kg_clicked_node');
-                
-                updateStatus('检测到点击: ' + nodeId);
-                console.log('[Bridge] Node clicked:', nodeId);
-                
-                // Get PARENT window's URL (not iframe's about:srcdoc)
-                var parentUrl = window.parent.location.href;
-                var baseUrl = parentUrl.split('?')[0];
-                var newUrl = baseUrl + '?kg_node_click=' + encodeURIComponent(nodeId);
-                
-                console.log('[Bridge] Parent URL:', parentUrl);
-                console.log('[Bridge] New URL:', newUrl);
-                updateStatus('跳转到: ' + nodeId.substring(0, 30));
-                
-                setTimeout(function() {
-                    // Change PARENT window's location
-                    try {
-                        window.parent.location.href = newUrl;
-                    } catch(e) {
-                        // If blocked by cross-origin policy, try postMessage
-                        console.error('[Bridge] Direct navigation blocked:', e);
-                        window.parent.postMessage({
-                            type: 'kg_navigate',
-                            url: newUrl,
-                            nodeId: nodeId
-                        }, '*');
-                    }
-                }, 200);
+    window.addEventListener('message', function(event) {
+        console.log('[Listener] Received message:', event.data);
+        
+        // Check if it's our graph click message
+        if (event.data && event.data.type === 'kg_node_clicked') {
+            var nodeId = event.data.nodeId;
+            console.log('[Listener] Node click detected:', nodeId);
+            
+            // Update the status indicator
+            var statusDiv = document.getElementById('kg_listener_status');
+            if (statusDiv) {
+                statusDiv.textContent = '✅ 点击已捕获: ' + nodeId.substring(0, 30);
+                statusDiv.style.background = '#c8e6c9';
+                statusDiv.style.color = '#1b5e20';
+                statusDiv.style.fontWeight = 'bold';
             }
-        } catch(e) {
-            console.error('[Bridge] Error:', e);
-            updateStatus('错误: ' + e.message);
+            
+            // Navigate by updating URL (this IS allowed from main window)
+            setTimeout(function() {
+                console.log('[Listener] Updating URL for navigation');
+                var currentUrl = window.location.href;
+                var cleanUrl = currentUrl.split('?')[0];
+                var newUrl = cleanUrl + '?kg_node_click=' + encodeURIComponent(nodeId);
+                
+                console.log('[Listener] New URL:', newUrl);
+                window.location.href = newUrl;
+            }, 100);
         }
-    }, 500);
+    }, false);
     
-    setTimeout(function() { 
-        clearInterval(monitorInterval);
-        updateStatus('监听已停止 (60秒超时)');
-    }, 60000);
+    console.log('[Listener] postMessage handler active');
 })();
 </script>
+
+<div id="kg_listener_status" style="background:#fff3e0;padding:8px;font-size:12px;color:#d32f2f;text-align:center;border-radius:4px;margin:5px 0;">
+  🔍 监听图谱节点点击（等待中...）
+</div>
 """
-components.html(localStorage_bridge, height=50)
+components.html(postMessage_listener, height=40)
 
 # ── Handle graph node click from URL ────────────────────────────────────────
 clicked_node_id = None
 
-# Check URL parameters (set by localStorage bridge)
+# Check URL parameters (set by postMessage listener)
 if "kg_node_click" in st.query_params:
     clicked_node_id = st.query_params["kg_node_click"]
     # Show debug message
