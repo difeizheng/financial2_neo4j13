@@ -43,6 +43,13 @@ def _load(task_id: str, output_dir: str):
 graph = _load(task.id, task.output_dir)
 stats = graph.stats()
 
+# ── Navigation state (MUST be defined before handling clicks) ───────────────────
+_NAV_KEY = f"nav_{task.id}"
+if _NAV_KEY not in st.session_state:
+    st.session_state[_NAV_KEY] = {"sheet": None, "table": None, "indicator": None, "cell": None}
+
+nav = st.session_state[_NAV_KEY]
+
 # ── localStorage bridge for receiving graph clicks ─────────────────────────────
 # This invisible component monitors localStorage and updates URL when node clicked
 localStorage_bridge = """
@@ -59,10 +66,14 @@ localStorage_bridge = """
                 var nodeId = localStorage.getItem('kg_clicked_node');
                 console.log('Detected click from localStorage:', nodeId);
                 
-                // Update URL to trigger Streamlit navigation
-                var url = new URL(window.location.href);
-                url.searchParams.set('kg_node_click', nodeId);
-                window.location.href = url.toString();
+                // Method 1: URL parameter + reload
+                var currentUrl = window.location.href;
+                var separator = currentUrl.indexOf('?') > -1 ? '&' : '?';
+                var newUrl = currentUrl.split('?')[0] + separator + 'kg_node_click=' + encodeURIComponent(nodeId);
+                console.log('Navigating to:', newUrl);
+                
+                // Force navigation (works in most environments)
+                window.location.assign(newUrl);
             }
         } catch(e) {
             console.error('localStorage monitoring failed:', e);
@@ -82,6 +93,8 @@ clicked_node_id = None
 # Check URL parameters (set by localStorage bridge)
 if "kg_node_click" in st.query_params:
     clicked_node_id = st.query_params["kg_node_click"]
+    # Show debug message
+    st.success(f"✅ 检测到节点点击: `{clicked_node_id}`")
     # Clear URL parameter immediately to avoid repeated navigation
     try:
         st.query_params.pop("kg_node_click")
@@ -152,13 +165,6 @@ unlinked = stats.get("unlinked_cells", 0)
 m_cols[5].metric("未关联 Table", f"{unlinked:,}", delta=f"{unlinked/stats['total_cells']*100:.1f}%" if stats["total_cells"] else "")
 
 st.divider()
-
-# ── Navigation state ──────────────────────────────────────────────────────────
-_NAV_KEY = f"nav_{task.id}"
-if _NAV_KEY not in st.session_state:
-    st.session_state[_NAV_KEY] = {"sheet": None, "table": None, "indicator": None, "cell": None}
-
-nav = st.session_state[_NAV_KEY]
 
 # ── Global Search ─────────────────────────────────────────────────────────────
 search_query = st.text_input("🔍 全局搜索 (支持 Sheet/Table/Indicator 名称或 Cell ID)", "", key="global_search")
