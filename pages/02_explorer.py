@@ -71,7 +71,9 @@ localStorage_bridge = """
         }
         try {
             window.parent.console.log('[Bridge] ' + msg);
-        } catch(e) {}
+        } catch(e) {
+            console.log('[Bridge] ' + msg);
+        }
     }
     
     updateStatus('监听中... (点击图谱节点测试)');
@@ -86,14 +88,28 @@ localStorage_bridge = """
                 updateStatus('检测到点击: ' + nodeId);
                 console.log('[Bridge] Node clicked:', nodeId);
                 
-                var baseUrl = window.location.href.split('?')[0];
+                // Get PARENT window's URL (not iframe's about:srcdoc)
+                var parentUrl = window.parent.location.href;
+                var baseUrl = parentUrl.split('?')[0];
                 var newUrl = baseUrl + '?kg_node_click=' + encodeURIComponent(nodeId);
                 
-                console.log('[Bridge] Navigating to:', newUrl);
+                console.log('[Bridge] Parent URL:', parentUrl);
+                console.log('[Bridge] New URL:', newUrl);
                 updateStatus('跳转到: ' + nodeId.substring(0, 30));
                 
                 setTimeout(function() {
-                    window.location.assign(newUrl);
+                    // Change PARENT window's location
+                    try {
+                        window.parent.location.href = newUrl;
+                    } catch(e) {
+                        // If blocked by cross-origin policy, try postMessage
+                        console.error('[Bridge] Direct navigation blocked:', e);
+                        window.parent.postMessage({
+                            type: 'kg_navigate',
+                            url: newUrl,
+                            nodeId: nodeId
+                        }, '*');
+                    }
                 }, 200);
             }
         } catch(e) {
