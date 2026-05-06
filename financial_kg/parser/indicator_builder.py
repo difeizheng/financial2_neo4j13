@@ -36,8 +36,13 @@ def _make_indicator_id(sheet: str, row: int, name: str, category: str) -> str:
     return f"IND_{sheet}_{row}_{cat}_{clean}".replace(" ", "_")
 
 
-def _make_table_id(sheet: str, header_row: int) -> str:
-    return f"TBL_{sheet}_{header_row}"
+def _make_table_id(sheet: str, data_start: int) -> str:
+    """Create a stable, unique table ID using data_start row.
+    
+    Using data_start instead of header_row prevents ID collision
+    when header_inheritance modifies header_row across multiple tables.
+    """
+    return f"TBL_{sheet}_{data_start}"
 
 
 def _make_readable_formula(formula_raw: str, graph: FinancialGraph) -> str:
@@ -78,7 +83,7 @@ def build_indicators(
         inherit_headers_within_sheet(tables, rows)
 
         for tbl in tables:
-            table_id = _make_table_id(sheet_name, tbl.header_row)
+            table_id = _make_table_id(sheet_name, tbl.data_start)
             _process_table(tbl, table_id, sheet_name, rows, cell_list, graph)
 
 

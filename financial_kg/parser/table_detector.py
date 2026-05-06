@@ -513,6 +513,9 @@ def detect_tables(
     # --- Phase 5.5: Merge overlapping TableInfo objects ---
     result = _merge_overlapping_table_infos(result, rows)
 
+    # --- Phase 5.6: Merge adjacent L-tables with same inherited header ---
+    result = _merge_adjacent_l_tables_with_same_header(result, rows)
+
     # --- Phase 6: Per-sheet numbering and title formatting ---
     for idx, tbl in enumerate(result, 1):
         sheet_short = sheet_name.strip()
@@ -1203,3 +1206,152 @@ def _role_from_data(col: str, tbl: TableInfo, rows: dict[int, dict[str, object]]
         return ColRole.TOTAL
 
     return ColRole.UNKNOWN
+
+
+# --- Merge adjacent L-tables with same inherited header ---
+
+def _merge_adjacent_l_tables_with_same_header(
+    tables: list[TableInfo],
+    rows: dict[int, dict[str, object]],
+) -> list[TableInfo]:
+    """Merge adjacent L-tables that inherit the same header.
+    
+    When two tables are separated by:
+    1. Empty rows + a non-proper-header row (e.g., "成本费用" section title)
+    2. Both tables have similar col_roles pattern
+    
+    They should be merged into one large table.
+    
+    Criteria:
+    - Gap between tables <= 2 rows
+    - Gap rows don't look like proper table headers
+    - Both tables have >=3 overlapping columns with similar roles
+    """
+    if len(tables) <= 1:
+        return tables
+    
+    merged = []
+    used = set()
+    
+    for i, t1 in enumerate(tables):
+        if i in used:
+            continue
+        
+        current = TableInfo(
+            t1.sheet,
+            t1.header_row,
+            t1.data_start,
+            t1.data_end,
+            title=t1.title,
+            start_col=t1.start_col,
+            end_col=t1.end_col,
+        )
+        current.col_roles = dict(t1.col_roles)
+        current.col_labels = dict(t1.col_labels)
+        current.time_period_labels = dict(t1.time_period_labels)
+        current.is_double_header = t1.is_double_header
+        
+        for j in range(i + 1, len(tables)):
+            if j in used:
+                continue
+            
+            t2 = tables[j]
+            
+            gap_start = current.data_end + 1
+            gap_end = t2.data_start - 1
+            gap_rows = gap_end - gap_start + 1
+            
+            if gap_rows > 2:
+                break
+            
+            has_proper_header_in_gap = False
+            for gap_row in range(gap_start, gap_end + 1):
+                gap_data = rows.get(gap_row, {})
+                if _looks_like_table_header(gap_data):
+                    has_proper_header_in_gap = True
+                    break
+            
+            # Check if t2 has its own proper header (semantic table break)
+            semantic_table_break = False
+            if not has_proper_header_in_gap:
+                t2_header_data = rows.get(t2.header_row, {})
+                t2_header_kw_count = sum(1 for v in t2_header_data.values()
+                                        if isinstance(v, str) and any(kw in v for kw in
+                                            {"序号","编号","项目","名称","参数","指标",
+                                             "合计","单位","类别","分类"}))
+                
+                # If t2 has proper header (>=3 keywords), it's a semantic table break
+                if t2_header_kw_count >= 3:
+                    semantic_table_break = True
+                else:
+                    # Key check: does current (prev_t) have proper header?
+                    # If prev_t has proper header keyword in B column (e.g., "类别", "项目")
+                    # → prev_t is parent table, t2 inherits from it → should merge
+                    # If prev_t has NO proper header → both are independent → should NOT merge
+                    current_header_data = rows.get(current.header_row, {})
+                    current_header_kw_count = sum(1 for v in current_header_data.values()
+                                                  if isinstance(v, str) and any(kw in v for kw in
+                                                      {"序号","编号","项目","名称","参数","指标",
+                                                       "合计","单位","类别","分类"}))
+                    
+                    # Special check: if B column contains header keywords like "类别"
+                    # This indicates proper header structure (parent table)
+                    b_col_value = current_header_data.get('B')
+                    b_col_is_header_kw = (b_col_value and isinstance(b_col_value, str) and
+                                         any(kw in b_col_value for kw in {"类别","分类","项目","名称","序号","编号"}))
+                    
+                    if current_header_kw_count >= 3 or b_col_is_header_kw:
+                        # current has proper header, t2 inherits → should merge
+                        pass  # Continue to col_roles check
+                    else:
+                        # Both have no proper header, both are independent semantic tables
+                        # Check if t2.header_row has semantic title in B column
+                        t2_b_col_value = t2_header_data.get('B')
+                        if (t2_b_col_value and isinstance(t2_b_col_value, str) and 
+                            len(t2_b_col_value.strip()) > 3):
+                            # t2 has semantic title in B column, independent table
+                            semantic_table_break = True
+            
+            if has_proper_header_in_gap or semantic_table_break:
+                break
+            
+            t1_cols = set(current.col_roles.keys())
+            t2_cols = set(t2.col_roles.keys())
+            overlap_cols = t1_cols & t2_cols
+            
+            if len(overlap_cols) < 3:
+                break
+            
+            role_matches = sum(1 for col in overlap_cols
+                              if current.col_roles.get(col) == t2.col_roles.get(col))
+            
+            # Relax threshold to 0.4 because section-title rows have inaccurate col_roles
+            # Use >= 0.4 * overlap_cols (allow equality)
+            min_required_matches = max(3, int(len(overlap_cols) * 0.4))
+            if role_matches < min_required_matches:
+                break
+            
+            current.data_end = t2.data_end
+            if t2.start_col:
+                current.start_col = min(current.start_col or t2.start_col, t2.start_col)
+            if t2.end_col:
+                current.end_col = max(current.end_col or t2.end_col, t2.end_col)
+            
+            for col, role in t2.col_roles.items():
+                if col not in current.col_roles:
+                    current.col_roles[col] = role
+            
+            for col, label in t2.col_labels.items():
+                if col not in current.col_labels:
+                    current.col_labels[col] = label
+            
+            for col, label in t2.time_period_labels.items():
+                if col not in current.time_period_labels:
+                    current.time_period_labels[col] = label
+            
+            used.add(j)
+        
+        merged.append(current)
+        used.add(i)
+    
+    return merged
