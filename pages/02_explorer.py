@@ -43,10 +43,34 @@ def _load(task_id: str, output_dir: str):
 graph = _load(task.id, task.output_dir)
 stats = graph.stats()
 
-# ── Handle graph node click from URL parameter ────────────────────────────────
-query_params = st.query_params
-if "graph_node_id" in query_params:
-    clicked_node_id = query_params["graph_node_id"]
+# ── Create hidden input for receiving graph clicks ─────────────────────────────
+st.markdown("""
+<input type="hidden" id="kg_clicked_node" value="" />
+<script>
+// Listen for changes on the hidden input
+document.getElementById('kg_clicked_node').addEventListener('change', function(e) {
+    // The value will be picked up by Streamlit via st.text_input below
+    console.log('Hidden input changed:', e.target.value);
+});
+</script>
+""", unsafe_allow_html=True)
+
+# Invisible text_input to receive node click (key must match hidden input id)
+clicked_node_input = st.text_input("", "", key="kg_clicked_node", label_visibility="collapsed")
+
+# ── Handle graph node click ────────────────────────────────────────────────
+clicked_node_id = None
+
+# Check hidden input value
+if clicked_node_input and clicked_node_input.strip():
+    clicked_node_id = clicked_node_input.strip()
+    st.session_state["kg_clicked_node"] = ""  # Clear after handling
+
+# Fallback: check URL parameters
+elif "kg_node_click" in st.query_params:
+    clicked_node_id = st.query_params["kg_node_click"]
+
+if clicked_node_id:
     
     # Determine node type and navigate
     if clicked_node_id in graph.cells:
