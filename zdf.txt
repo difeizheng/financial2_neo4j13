@@ -1,0 +1,2 @@
+2026-4-30：
+基于financial2_neo4j5_claude，版本：1.2.0使用opencode，qwen3.6
