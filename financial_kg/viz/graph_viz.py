@@ -1,4 +1,4 @@
-"""pyvis-based interactive graph visualization."""
+"""pyvis-based interactive graph visualization with click navigation support."""
 from __future__ import annotations
 import os
 import tempfile
@@ -11,6 +11,34 @@ try:
     _PYVIS_AVAILABLE = True
 except ImportError:
     _PYVIS_AVAILABLE = False
+
+
+_NODE_CLICK_SCRIPT = """
+<script>
+// Inject click navigation handler
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+        if (typeof network !== 'undefined') {
+            network.on('click', function(params) {
+                if (params.nodes && params.nodes.length > 0) {
+                    var nodeId = params.nodes[0];
+                    // Update URL to trigger Streamlit navigation
+                    var currentUrl = window.parent.location.href;
+                    var separator = currentUrl.indexOf('?') > -1 ? '&' : '?';
+                    var newUrl = currentUrl + separator + 'graph_node_id=' + encodeURIComponent(nodeId);
+                    window.parent.location.href = newUrl;
+                }
+            });
+        }
+    }, 1000);
+});
+</script>
+"""
+
+
+def _inject_click_handler(html_content: str) -> str:
+    """Inject JavaScript click handler into pyvis HTML."""
+    return html_content.replace("</body>", _NODE_CLICK_SCRIPT + "</body>")
 
 
 # Node/edge color palette
@@ -136,6 +164,14 @@ def build_indicator_graph(
         os.close(fd)
 
     net.save_graph(output_path)
+    
+    # Inject click handler
+    with open(output_path, encoding="utf-8") as f:
+        html_content = f.read()
+    html_content = _inject_click_handler(html_content)
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(html_content)
+    
     return output_path
 
 
@@ -200,6 +236,14 @@ def build_cell_subgraph(
         os.close(fd)
 
     net.save_graph(output_path)
+    
+    # Inject click handler
+    with open(output_path, encoding="utf-8") as f:
+        html_content = f.read()
+    html_content = _inject_click_handler(html_content)
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(html_content)
+    
     return output_path
 
 
@@ -265,6 +309,14 @@ def build_table_graph(
         os.close(fd)
 
     net.save_graph(output_path)
+    
+    # Inject click handler
+    with open(output_path, encoding="utf-8") as f:
+        html_content = f.read()
+    html_content = _inject_click_handler(html_content)
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(html_content)
+    
     return output_path
 
 
@@ -362,6 +414,14 @@ def build_indicator_subgraph(
         os.close(fd)
 
     net.save_graph(output_path)
+    
+    # Inject click handler
+    with open(output_path, encoding="utf-8") as f:
+        html_content = f.read()
+    html_content = _inject_click_handler(html_content)
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(html_content)
+    
     return output_path
 
 
@@ -451,4 +511,12 @@ def build_indicator_cell_graph(
         os.close(fd)
 
     net.save_graph(output_path)
+    
+    # Inject click handler
+    with open(output_path, encoding="utf-8") as f:
+        html_content = f.read()
+    html_content = _inject_click_handler(html_content)
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(html_content)
+    
     return output_path

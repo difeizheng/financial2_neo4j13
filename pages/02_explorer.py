@@ -43,6 +43,62 @@ def _load(task_id: str, output_dir: str):
 graph = _load(task.id, task.output_dir)
 stats = graph.stats()
 
+# ── Handle graph node click from URL parameter ────────────────────────────────
+query_params = st.query_params
+if "graph_node_id" in query_params:
+    clicked_node_id = query_params["graph_node_id"]
+    
+    # Determine node type and navigate
+    if clicked_node_id in graph.cells:
+        cell = graph.cells[clicked_node_id]
+        # Find parent indicator and table
+        parent_ind = None
+        parent_tbl = None
+        for ind_id, ind in graph.indicators.items():
+            if clicked_node_id in ind.cell_ids:
+                parent_ind = ind_id
+                for tbl_id, tbl in graph.tables.items():
+                    if ind_id in tbl.indicator_ids:
+                        parent_tbl = tbl_id
+                        break
+                break
+        
+        nav.update({
+            "sheet": cell.sheet,
+            "table": parent_tbl,
+            "indicator": parent_ind,
+            "cell": clicked_node_id
+        })
+    
+    elif clicked_node_id in graph.indicators:
+        ind = graph.indicators[clicked_node_id]
+        # Find parent table
+        parent_tbl = None
+        for tbl_id, tbl in graph.tables.items():
+            if clicked_node_id in tbl.indicator_ids:
+                parent_tbl = tbl_id
+                break
+        
+        nav.update({
+            "sheet": ind.sheet,
+            "table": parent_tbl,
+            "indicator": clicked_node_id,
+            "cell": None
+        })
+    
+    elif clicked_node_id in graph.tables:
+        tbl = graph.tables[clicked_node_id]
+        nav.update({
+            "sheet": tbl.sheet,
+            "table": clicked_node_id,
+            "indicator": None,
+            "cell": None
+        })
+    
+    # Clear URL parameter to avoid repeated navigation
+    st.query_params.clear()
+    st.rerun()
+
 # ── Overview metrics ──────────────────────────────────────────────────────────
 m_cols = st.columns(6)
 m_cols[0].metric("Sheets", len(stats["sheets"]))
@@ -258,6 +314,7 @@ if nav["cell"]:
     
     # Auto-generate graph
     depth = st.slider("展开深度", 1, 5, 2, key="cell_depth")
+    st.caption("💡 **提示**: 点击图谱中的节点可直接跳转到详情页")
     with st.spinner("渲染依赖子图..."):
         _render_html(build_cell_subgraph(graph, nav["cell"], depth=depth), height=500)
     
@@ -289,6 +346,7 @@ elif nav["indicator"]:
     if cell_count > 100:
         st.info(f"检测到 {cell_count} 个 Cell，已启用增强稳定化模式")
     
+    st.caption("💡 **提示**: 点击图谱中的节点可直接跳转到详情页")
     with st.spinner("渲染 Cell 关系图..."):
         _render_html(build_indicator_cell_graph(graph, nav["indicator"]), height=500)
     
@@ -329,6 +387,7 @@ elif nav["table"]:
     if node_count > 200:
         st.info(f"检测到 {node_count} 个指标，已启用增强稳定化模式")
     
+    st.caption("💡 **提示**: 点击图谱中的节点可直接跳转到详情页")
     with st.spinner("渲染指标关系图..."):
         _render_html(build_indicator_subgraph(graph, nav["table"], node_count=node_count), height=500)
     
@@ -365,6 +424,7 @@ elif nav["sheet"]:
 
     # Auto-generate Table graph
     if tables_in_sheet:
+        st.caption("💡 **提示**: 点击图谱中的节点可直接跳转到详情页")
         with st.spinner("渲染表间关系图..."):
             _render_html(build_table_graph(graph, nav["sheet"]), height=500)
         
@@ -400,6 +460,7 @@ else:
     st.subheader("📊 全局图谱概览")
     
     with st.expander("展开查看全局图谱（建议最多200节点）", expanded=False):
+        st.caption("💡 **提示**: 点击图谱中的节点可直接跳转到详情页")
         col1, col2 = st.columns([3, 1])
         with col1:
             overview_nodes = st.slider("概览节点数", 50, 300, 150, 50, key="overview_nodes")
