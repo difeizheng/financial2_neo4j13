@@ -6,6 +6,13 @@ from typing import Optional
 
 from ..models.indicator import Indicator
 from ..models.graph import FinancialGraph
+from .category_classifier import (
+    extract_keywords,
+    classify_category,
+    classify_question_type,
+    match_indicator_category,
+    calculate_keyword_match_score,
+)
 
 
 @dataclass
@@ -76,6 +83,110 @@ class IndicatorRetriever:
             query_years=years,
             total_candidates=len(scored),
         )
+
+    def search_hybrid(
+        self,
+        question: str,
+        top_k_candidates: int = 30,
+    ) -> tuple[list[Indicator], dict]:
+        """Phase 1: Hybrid retrieval using keywords + category filtering.
+        
+        Returns candidates for Phase 2 LLM filtering.
+        
+        Args:
+            question: User question
+            top_k_candidates: Number of candidates to return (default 30)
+            
+        Returns:
+            tuple: (candidate_indicators, metadata_dict)
+        """
+        keywords = extract_keywords(question)
+        category = classify_category(question)
+        question_type = classify_question_type(question)
+        years = _extract_years(question)
+        
+        candidates = []
+        seen_ids = set()
+        
+        for ind in self._indicators:
+            ind_name = ind.name or ""
+            ind_category = match_indicator_category(ind_name)
+            
+            score = 0.0
+            reasons = []
+            
+            kw_score = calculate_keyword_match_score(question, ind_name, keywords)
+            if kw_score > 0:
+                score += kw_score
+                reasons.append("keyword_match")
+            
+            if category and ind_category == category:
+                score += 0.4
+                reasons.append("category_match")
+            
+            for kw in keywords:
+                if kw in ind_name or kw in (ind.category or ""):
+                    score += 0.3
+                    if kw not in reasons:
+                        reasons.append("keyword_exact")
+            
+            if years and ind.time_series:
+                year_match = any(y in str(k) for y in years for k in ind.time_series.keys())
+                if year_match:
+                    score += 0.2
+                    reasons.append("year_match")
+            
+            if score > 0 and ind.id not in seen_ids:
+                candidates.append((score, reasons, ind))
+                seen_ids.add(ind.id)
+        
+        candidates.sort(key=lambda x: -x[0])
+        top_candidates = [c[2] for c in candidates[:top_k_candidates]]
+        
+        metadata = {
+            "keywords": keywords,
+            "category": category,
+            "question_type": question_type,
+            "years": years,
+            "total_candidates": len(candidates),
+            "candidate_scores": [(c[2].id, c[0], c[1]) for c in candidates[:top_k_candidates]],
+        }
+        
+        return top_candidates, metadata
+
+    def get_candidates_for_llm(
+        self,
+        candidates: list[Indicator],
+        metadata: dict,
+    ) -> str:
+        """Format candidate indicators for LLM filtering prompt.
+        
+        Args:
+            candidates: List of candidate indicators from Phase 1
+            metadata: Metadata from Phase 1
+            
+        Returns:
+            Formatted text for LLM prompt
+        """
+        lines = []
+        for idx, ind in enumerate(candidates, 1):
+            time_series_str = ""
+            if ind.time_series:
+                ts_items = list(ind.time_series.items())[:3]
+                time_series_str = " | ".join(f"{k}={v}" for k, v in ts_items)
+            
+            category_str = ind.category or "未分类"
+            formula_str = ind.formula_raw or "无公式"
+            
+            line = f"{idx}. {ind.id}\n"
+            line += f"   名称: {ind.name}\n"
+            line += f"   类别: {category_str}\n"
+            line += f"   时间序列: {time_series_str}\n"
+            line += f"   公式: {formula_str[:50]}...\n"
+            
+            lines.append(line)
+        
+        return "\n".join(lines)
 
     def _tokenize(self, question: str) -> list[str]:
         # Strip stop words and punctuation that carry no indicator meaning

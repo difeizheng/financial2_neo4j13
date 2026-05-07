@@ -112,3 +112,60 @@ class PromptBuilder:
             "5. 所有查询必须包含 task_id 过滤条件：WHERE n.task_id = '{self._task_id}'\n"
             "6. 节点 ID 格式为 '{task_id}_{original_id}'，使用 orig_id 属性可获取原始 ID"
         )
+
+    def build_llm_filter_prompt(
+        self,
+        question: str,
+        candidates_text: str,
+        question_type: str,
+        category: str,
+        years: list[str],
+    ) -> str:
+        """Build prompt for Phase 2: LLM-based candidate filtering.
+        
+        Args:
+            question: User question
+            candidates_text: Formatted candidate indicators
+            question_type: Classified question type
+            category: Financial category
+            years: Extracted years
+            
+        Returns:
+            LLM filtering prompt
+        """
+        year_hint = f"用户查询年份: {', '.join(years)}" if years else ""
+        category_hint = f"问题类别: {category}" if category else "未分类"
+        
+        return (
+            "你是一个专业的财务分析师。请判断以下候选指标与用户问题的相关性。\n\n"
+            f"## 用户问题\n{question}\n\n"
+            f"## 问题类型\n{question_type}\n\n"
+            f"## 问题类别\n{category_hint}\n\n"
+            f"{year_hint}\n\n"
+            "## 候选指标列表\n"
+            f"{candidates_text}\n\n"
+            "## 评分标准\n"
+            "请为每个指标评分（0-10分）：\n"
+            "10分 = 直接回答问题所需的核心指标（精确匹配）\n"
+            "8分 = 重要的辅助指标（计算依赖、上下文）\n"
+            "6分 = 可能相关的指标（类别匹配）\n"
+            "4分 = 弱相关性指标（年份匹配）\n"
+            "0分 = 无关指标\n\n"
+            "## 输出格式\n"
+            "返回JSON格式（只返回score>=6的指标，最多8个）：\n"
+            "[\n"
+            "  {\n"
+            "    \"id\": \"指标ID\",\n"
+            "    \"name\": \"指标名称\",\n"
+            "    \"score\": 分数,\n"
+            "    \"reason\": \"原因（一句话）\"\n"
+            "  },\n"
+            "  ...\n"
+            "]\n\n"
+            "## 注意事项\n"
+            "1. 区分财务领域语义差异（如：营业成本 vs 营业费用）\n"
+            "2. 总投资 ≠ 投资收益（资产类 vs 利润类）\n"
+            "3. 成本（生产）≠ 费用（管理/销售/财务）\n"
+            "4. 只返回相关性高的指标，避免无关干扰\n"
+            "5. JSON格式必须正确，不要添加注释"
+        )
