@@ -50,51 +50,82 @@ if _NAV_KEY not in st.session_state:
 
 nav = st.session_state[_NAV_KEY]
 
-# ── Main window postMessage listener (NOT in iframe!) ────────────────────────────
-# Critical: must listen in main window context, not inside another iframe!
+# ── LocalStorage polling for cross-iframe communication ─────────────────────────
+# localStorage is SHARED across all windows with same origin (works reliably!)
 st.markdown("""
+<div id="kg_poll_status" style="background:#fff3e0;padding:8px;font-size:12px;color:#d32f2f;text-align:center;border-radius:4px;margin:10px 0;border:2px solid #ff9800;">
+  🔍 监听图谱节点点击（轮询localStorage中...）
+</div>
+
 <script>
 (function() {
-    console.log('[MainWindow] Setting up global postMessage handler');
+    console.log('[Poller] Starting localStorage poller');
+    var lastTimestamp = 0;
+    var pollCount = 0;
     
-    // Listen in MAIN WINDOW (not iframe)
-    window.addEventListener('message', function(event) {
-        console.log('[MainWindow] Received message:', event.data);
-        
-        // Check if it's our graph click message
-        if (event.data && event.data.type === 'kg_node_clicked') {
-            var nodeId = event.data.nodeId;
-            console.log('[MainWindow] Node click detected:', nodeId);
-            
-            // Update the status indicator
-            var statusDiv = document.getElementById('kg_main_status');
-            if (statusDiv) {
-                statusDiv.textContent = '✅ 点击已捕获: ' + nodeId.substring(0, 30);
+    function updateStatus(msg, success) {
+        var statusDiv = document.getElementById('kg_poll_status');
+        if (statusDiv) {
+            statusDiv.textContent = msg;
+            if (success) {
                 statusDiv.style.background = '#c8e6c9';
                 statusDiv.style.color = '#1b5e20';
                 statusDiv.style.fontWeight = 'bold';
+                statusDiv.style.border = '2px solid #4caf50';
+            }
+        }
+    }
+    
+    // Poll localStorage every 500ms
+    var pollInterval = setInterval(function() {
+        pollCount++;
+        
+        try {
+            var timestamp = parseInt(localStorage.getItem('kg_click_timestamp') || '0');
+            
+            // Log every 10 polls (reduce noise)
+            if (pollCount % 10 === 0) {
+                console.log('[Poller] Poll #' + pollCount + ', timestamp:', timestamp);
             }
             
-            // Navigate by updating URL (allowed from main window)
-            setTimeout(function() {
-                console.log('[MainWindow] Updating URL for navigation');
-                var currentUrl = window.location.href;
-                var cleanUrl = currentUrl.split('?')[0];
-                var newUrl = cleanUrl + '?kg_node_click=' + encodeURIComponent(nodeId);
+            if (timestamp > lastTimestamp) {
+                lastTimestamp = timestamp;
+                var nodeId = localStorage.getItem('kg_clicked_node');
                 
-                console.log('[MainWindow] New URL:', newUrl);
-                window.location.href = newUrl;
-            }, 100);
+                console.log('[Poller] ✅ Click detected! Node:', nodeId);
+                updateStatus('✅ 点击已捕获: ' + (nodeId ? nodeId.substring(0, 30) : 'unknown'), true);
+                
+                // Navigate immediately
+                setTimeout(function() {
+                    console.log('[Poller] Navigating to node:', nodeId);
+                    var cleanUrl = window.location.href.split('?')[0];
+                    var newUrl = cleanUrl + '?kg_node_click=' + encodeURIComponent(nodeId);
+                    console.log('[Poller] New URL:', newUrl);
+                    
+                    // Clear localStorage to prevent repeat navigation
+                    localStorage.removeItem('kg_click_timestamp');
+                    localStorage.removeItem('kg_clicked_node');
+                    
+                    window.location.href = newUrl;
+                }, 150);
+            }
+        } catch(e) {
+            console.error('[Poller] Error:', e);
+            updateStatus('❌ 错误: ' + e.message, false);
         }
-    }, false);
+    }, 500);
     
-    console.log('[MainWindow] Global postMessage handler active');
+    updateStatus('🔍 监听图谱节点点击（轮询localStorage中...）', false);
+    console.log('[Poller] localStorage poller active (polling every 500ms)');
+    
+    // Stop after 2 minutes
+    setTimeout(function() {
+        clearInterval(pollInterval);
+        updateStatus('⏱️ 监听已停止（超时）', false);
+        console.log('[Poller] Poller stopped (timeout)');
+    }, 120000);
 })();
 </script>
-
-<div id="kg_main_status" style="background:#fff3e0;padding:8px;font-size:12px;color:#d32f2f;text-align:center;border-radius:4px;margin:10px 0;border:2px solid #ff9800;">
-  🔍 全局监听图谱节点点击（主窗口监听器已启动）
-</div>
 """, unsafe_allow_html=True)
 
 # ── Handle graph node click from URL ────────────────────────────────────────
