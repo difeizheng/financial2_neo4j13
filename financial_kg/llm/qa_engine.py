@@ -90,7 +90,17 @@ class QAEngine:
             resp = self._client.chat.completions.create(
                 model=self._model, messages=messages, max_tokens=1024
             )
-            answer = resp.choices[0].message.content
+            
+            if not resp.choices or len(resp.choices) == 0:
+                return QAResponse(
+                    answer="LLM返回空响应，可能是模型名称错误或API配置问题。",
+                    retrieved_contexts=retrieval.contexts,
+                    cypher_query=cypher_query,
+                    cypher_results=cypher_results,
+                    error="Empty choices from LLM API",
+                )
+            
+            answer = resp.choices[0].message.content or "LLM返回空内容"
         except Exception as e:
             answer = f"LLM 调用失败：{e}"
             return QAResponse(
@@ -202,7 +212,17 @@ class QAEngine:
             resp = self._client.chat.completions.create(
                 model=self._model, messages=messages, max_tokens=1024
             )
-            answer = resp.choices[0].message.content
+            
+            if not resp.choices or len(resp.choices) == 0:
+                return QAResponse(
+                    answer="LLM返回空响应（Phase 3）",
+                    retrieved_contexts=contexts,
+                    cypher_query=cypher_query,
+                    cypher_results=cypher_results,
+                    error="Empty choices in answer generation",
+                )
+            
+            answer = resp.choices[0].message.content or "LLM返回空内容"
         except Exception as e:
             answer = f"LLM 调用失败：{e}"
             return QAResponse(
@@ -253,7 +273,14 @@ class QAEngine:
                 max_tokens=1500,
                 temperature=0.3,
             )
-            llm_output = resp.choices[0].message.content
+            
+            if not resp.choices or len(resp.choices) == 0:
+                return candidates[:8]
+            
+            llm_output = resp.choices[0].message.content or ""
+            
+            if not llm_output.strip():
+                return candidates[:8]
             
             scored_data = json.loads(llm_output)
             
@@ -361,8 +388,10 @@ class QAEngine:
                 model=self._model, messages=messages, max_tokens=1024, stream=True
             )
             for chunk in stream:
-                delta = chunk.choices[0].delta.content
-                if delta:
-                    yield ("chunk", delta)
+                if chunk.choices and len(chunk.choices) > 0:
+                    delta = chunk.choices[0].delta.content
+                    if delta:
+                        yield ("chunk", delta)
         except Exception as e:
+            yield ("error", f"LLM stream失败：{e}")
             yield ("error", f"LLM 调用失败：{e}")
