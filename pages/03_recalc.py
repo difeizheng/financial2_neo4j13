@@ -1,18 +1,22 @@
 """Page 3: Parameter modification and incremental recalculation - Complete refactor."""
 from __future__ import annotations
+import json
 import os
 import sys
 import uuid
 import streamlit as st
+import streamlit.components.v1 as components
 from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from financial_kg.storage.json_store import load_graph
 from financial_kg.storage.task_db import TaskDB
-from financial_kg.engine.recalculator import recalculate
-from financial_kg.engine.snapshot import create_snapshot
+from financial_kg.engine.recalculator import recalculate, RecalcResult, CellChange
+from financial_kg.engine.snapshot import create_snapshot, SnapshotDiff
 from financial_kg.llm.category_classifier import INDICATOR_CATEGORIES
+from financial_kg.viz.propagation_graph import build_propagation_data
+from financial_kg.viz.echarts_template import render_propagation_html
 
 st.set_page_config(page_title="参数重算", layout="wide")
 st.title("⚙️ 参数修改 & 增量重算")
@@ -71,6 +75,34 @@ def _get_downstream_chain(graph, cell_id, depth=3):
     
     traverse(cell_id, 1)
     return chain
+
+def _recalc_result_to_diff(result: RecalcResult, graph) -> SnapshotDiff:
+    """Convert RecalcResult to SnapshotDiff for propagation graph."""
+    changed_cells = []
+    sheets_affected = set()
+    
+    for change in result.changed_cells:
+        cell = graph.cells.get(change.cell_id)
+        if cell:
+            changed_cells.append({
+                "id": change.cell_id,
+                "sheet": cell.sheet,
+                "old": change.old_value,
+                "new": change.new_value,
+                "formula": change.formula or "",
+            })
+            sheets_affected.add(cell.sheet)
+    
+    return SnapshotDiff(
+        snapshot_a="before",
+        snapshot_b="after",
+        changed_cells=changed_cells,
+        affected_indicators=[],  # Not needed for propagation graph
+        summary={
+            "total_changed_cells": len(changed_cells),
+            "sheets_affected": list(sheets_affected),
+        }
+    )
 
 # ── Task selection ─────────────────────────────────────────────────────────────
 tasks = [t for t in db.list_tasks() if t.status == "done"]
@@ -468,32 +500,71 @@ with col_right:
                         if cell:
                             st.markdown(f"- **{err_cell_id}** | 公式: `{cell.formula_raw}`")
             
-            # Dependency propagation (simplified tree view)
-            st.markdown("---")
-            st.markdown("#### 🌊 依赖传播路径（简化）")
-            st.info("点击对比表中的单元格，查看其下游影响链")
-            
-            selected_cell_for_tree = st.selectbox(
-                "选择单元格查看影响链",
-                ["(选择)"] + [change.cell_id for change in result.changed_cells[:20]],
-                key="tree_cell_select"
-            )
-            
-            if selected_cell_for_tree != "(选择)":
-                downstream = _get_downstream_chain(graph, selected_cell_for_tree, depth=3)
+            # Dependency propagation - Interactive ECharts graph
+            if result.changed_cells:
+                st.markdown("---")
+                st.markdown("#### 🌊 变化传播图（交互式）")
                 
-                if downstream:
-                    st.markdown(f"**{selected_cell_for_tree}** → 影响以下单元格:")
-                    for i, (cell_id, level) in enumerate(downstream):
-                        indent = "　" * level
-                        cell = graph.cells.get(cell_id)
-                        ind_name = ""
-                        if cell and cell.indicator_id:
-                            ind = graph.indicators.get(cell.indicator_id)
-                            ind_name = ind.name if ind else ""
-                        st.markdown(f"{indent}→ **{cell_id}** ({ind_name})")
+                # Convert RecalcResult to SnapshotDiff format
+                diff = _recalc_result_to_diff(result, graph)
+                
+                # Search for propagation root
+                cell_search = st.text_input(
+                    "搜索传播起点",
+                    placeholder="输入 Cell ID、Sheet 名或值...",
+                    key="propagation_search"
+                )
+                
+                if cell_search:
+                    kw = cell_search.lower()
+                    candidates = [
+                        c for c in diff.changed_cells
+                        if kw in c["id"].lower()
+                        or kw in c.get("sheet", "").lower()
+                        or kw in str(c.get("old", "")).lower()
+                        or kw in str(c.get("new", "")).lower()
+                    ]
                 else:
-                    st.info("该单元格无下游依赖")
+                    candidates = diff.changed_cells
+                
+                cell_options = {
+                    f"{c['id']}  ({c['sheet']})  {c['old']} → {c['new']}": c["id"]
+                    for c in candidates[:200]
+                }
+                
+                if not cell_options:
+                    st.warning("无匹配的变化单元格，请调整搜索条件")
+                else:
+                    root_id = cell_options[st.selectbox(
+                        "选择传播起点",
+                        list(cell_options.keys()),
+                        key="propagation_root_select"
+                    )]
+                    
+                    if cell_search and len(candidates) > 200:
+                        st.caption(f"匹配 {len(candidates)} 个，显示前 200 个")
+                    
+                    # Configuration controls
+                    col_d, col_s = st.columns(2)
+                    max_depth = col_d.slider("最大传播深度", 1, 15, 8, key="prop_depth")
+                    max_nodes = col_s.slider("最大节点数", 100, 2000, 500, 100, key="prop_nodes")
+                    
+                    if st.button("生成传播图", type="primary", key="generate_prop_graph"):
+                        with st.spinner("构建传播图..."):
+                            prop_data = build_propagation_data(graph, diff, root_id, max_depth, max_nodes)
+                            prop_html = render_propagation_html(
+                                json.dumps(prop_data, ensure_ascii=False, default=str)
+                            )
+                        
+                        st.session_state["prop_html"] = prop_html
+                        st.session_state["prop_truncated"] = prop_data["stats"]["truncated"]
+                        st.session_state["prop_nodes"] = prop_data["stats"]["total_nodes"]
+                    
+                    if "prop_html" in st.session_state:
+                        if st.session_state.get("prop_truncated"):
+                            st.warning(f"图谱已截断至 {st.session_state['prop_nodes']} 个节点（下游更多）")
+                        
+                        components.html(st.session_state["prop_html"], height=780, scrolling=False)
         
         else:
             st.info("尚未执行重算，请在左侧面板或搜索标签页修改参数")

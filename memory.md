@@ -14,6 +14,30 @@
 
 ## Progress
 
+### Done (v35.2.0 - 2026-05-07)
+- **Enhanced: Dependency Propagation Visualization** (pages/03_recalc.py)
+  * Replaced simplified tree view with interactive ECharts graph
+  * Search propagation root: filter by Cell ID, Sheet, value
+  * Configurable controls: max depth (1-15), max nodes (100-2000)
+  * Interactive features: zoom, pan, click nodes for details
+  * Color-coded nodes: root (largest), changed cells, downstream cells
+  * Truncation warning when graph exceeds node limit
+  * Helper function: `_recalc_result_to_diff()` converts RecalcResult to SnapshotDiff
+  * Integration: `build_propagation_data()` + `render_propagation_html()` from viz module
+  * File: `pages/03_recalc.py` (import updates + propagation section)
+- **Key UX Improvements**:
+  * Visual clarity: nodes and edges show dependency relationships clearly
+  * Interactive exploration: zoom/pan to navigate large graphs
+  * Root selection: search among changed cells to start propagation
+  * Depth control: adjust visualization scope based on analysis needs
+  * Node limit: prevent performance issues with very large downstream chains
+- **Technical Changes**:
+  * Import: `json`, `components`, `build_propagation_data`, `render_propagation_html`
+  * Conversion: RecalcResult → SnapshotDiff format for propagation graph
+  * ECharts embedding: `components.html(html, height=780, scrolling=False)`
+  * Session state: persist `prop_html`, `prop_truncated`, `prop_nodes`
+- **Next**: Test with real Excel files with complex dependencies, optimize rendering performance
+
 ### Done (v35.0.0 - 2026-05-07)
 - **Complete Refactor: Parameter Modification Page** (pages/03_recalc.py)
   * Replaced nested 5-step selection with dual-column layout
