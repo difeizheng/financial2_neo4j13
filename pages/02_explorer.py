@@ -21,7 +21,6 @@ from financial_kg.viz.graph_viz import (
 st.set_page_config(page_title="图谱浏览", layout="wide")
 st.title("🔍 图谱浏览")
 
-# ── Task selector ─────────────────────────────────────────────────────────────
 db = TaskDB()
 tasks = [t for t in db.list_tasks() if t.status == "done"]
 
@@ -29,22 +28,42 @@ if not tasks:
     st.warning("暂无已解析的任务，请先在「上传解析」页面上传 Excel。")
     st.stop()
 
-task_options = {f"{t.id} — {t.filename}": t for t in tasks}
-selected_label = st.selectbox("选择任务", list(task_options.keys()))
-task = task_options[selected_label]
+if "current_graph" in st.session_state and "current_task_id" in st.session_state:
+    graph = st.session_state["current_graph"]
+    current_task_id = st.session_state["current_task_id"]
+    current_task = next((t for t in tasks if t.id == current_task_id), None)
+    
+    if current_task:
+        st.info(f"📊 当前已加载：**{current_task.id}** — {current_task.filename}")
+        
+        if st.button("🔄 切换到其他任务"):
+            st.session_state.pop("current_graph", None)
+            st.session_state.pop("current_task_id", None)
+            st.rerun()
+    else:
+        st.warning("当前任务已不存在，请重新选择。")
+        st.session_state.pop("current_graph", None)
+        st.session_state.pop("current_task_id", None)
+        st.rerun()
+else:
+    task_options = {f"{t.id} — {t.filename}": t for t in tasks}
+    selected_label = st.selectbox("选择任务", list(task_options.keys()))
+    task = task_options[selected_label]
 
+    @st.cache_resource(show_spinner="加载图谱...")
+    def _load(task_id: str, output_dir: str):
+        cells_path = os.path.join(output_dir, f"{task_id}_cells.json")
+        return load_graph(cells_path)
 
-@st.cache_resource(show_spinner="加载图谱...")
-def _load(task_id: str, output_dir: str):
-    cells_path = os.path.join(output_dir, f"{task_id}_cells.json")
-    return load_graph(cells_path)
+    graph = _load(task.id, task.output_dir)
+    st.session_state["current_graph"] = graph
+    st.session_state["current_task_id"] = task.id
 
-
-graph = _load(task.id, task.output_dir)
 stats = graph.stats()
+current_task_id = st.session_state.get("current_task_id", "")
 
 # ── Navigation state (MUST be defined before handling clicks) ───────────────────
-_NAV_KEY = f"nav_{task.id}"
+_NAV_KEY = f"nav_{current_task_id}"
 if _NAV_KEY not in st.session_state:
     st.session_state[_NAV_KEY] = {"sheet": None, "table": None, "indicator": None, "cell": None}
 
