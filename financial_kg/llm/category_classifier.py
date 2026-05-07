@@ -148,7 +148,7 @@ def extract_keywords(text: str) -> list[str]:
     """Extract meaningful keywords from question text."""
     stopwords = {"的", "是", "多少", "什么", "有", "在", "和", "与", "或", "吗", "呢", "啊"}
     
-    tokens = re.findall(r"[a-zA-Z]+|\d{4}|[\u4e00-\u9fa5]{2,}", text)
+    tokens = re.findall(r"[a-zA-Z]+|\d+|[\u4e00-\u9fa5]{2,}", text)
     
     keywords = []
     for token in tokens:
@@ -157,8 +157,29 @@ def extract_keywords(text: str) -> list[str]:
             keywords.append(token)
     
     year_pattern = re.findall(r"\d{4}", text)
+    short_year_pattern = re.findall(r"\d{2,3}", text)
+    
+    inferred_years = []
     for year in year_pattern:
         keywords.append(year)
+        inferred_years.append(year)
+    
+    for short_year in short_year_pattern:
+        if len(short_year) == 2 or len(short_year) == 3:
+            try:
+                short_int = int(short_year)
+                if 20 <= short_int <= 99:
+                    inferred_year = f"20{short_int}"
+                    if inferred_year not in inferred_years:
+                        keywords.append(inferred_year)
+                        inferred_years.append(inferred_year)
+                elif 200 <= short_int <= 999:
+                    inferred_year = f"{short_int}0"
+                    if inferred_year not in inferred_years:
+                        keywords.append(inferred_year)
+                        inferred_years.append(inferred_year)
+            except ValueError:
+                pass
     
     for weight_kw in KEYWORD_WEIGHTS:
         if weight_kw in text:

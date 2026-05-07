@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from financial_kg.storage.json_store import load_graph
 from financial_kg.storage.task_db import TaskDB
+from financial_kg.storage.chat_history_db import ChatHistoryDB
 from financial_kg.llm import QAEngine
 from financial_kg.config import (
     LLM_BASE_URL, LLM_API_KEY, LLM_MODEL,
@@ -20,6 +21,7 @@ st.set_page_config(page_title="智能问答", layout="wide")
 st.title("💬 财务模型智能问答")
 
 db = TaskDB()
+chat_db = ChatHistoryDB()
 tasks = [t for t in db.list_tasks() if t.status == "done"]
 
 if not tasks:
@@ -96,7 +98,35 @@ def _get_engine(task_id: str, _graph, _neo4j, base_url: str, api_key: str, model
 
 engine = _get_engine(task.id, graph, neo4j_store, base_url, api_key, model)
 
-# ── Chat ──────────────────────────────────────────────────────────────────────
+# ── Chat History Persistence ────────────────────────────────────────────────────
+if "qa_session_id" not in st.session_state:
+    st.session_state.qa_session_id = os.urandom(8).hex()
+
+if "qa_history_loaded" not in st.session_state:
+    saved_messages = chat_db.load_history(task.id, limit=50, session_id=st.session_state.qa_session_id)
+    st.session_state.qa_history = chat_db.format_for_llm(saved_messages)
+    st.session_state.qa_history_loaded = True
+
+# ── Sidebar: History Control ─────────────────────────────────────────────────────
+with st.sidebar:
+    st.divider()
+    st.header("对话历史")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("清空当前对话", type="secondary"):
+            st.session_state.qa_history = []
+            chat_db.clear_history(task.id, session_id=st.session_state.qa_session_id)
+            st.rerun()
+    with col2:
+        if st.button("清空所有历史", type="secondary"):
+            st.session_state.qa_history = []
+            chat_db.clear_history(task.id)
+            st.rerun()
+    
+    history_count = len(st.session_state.qa_history)
+    st.caption(f"当前对话: {history_count} 条消息")
+
+# ── Chat ──────────────────────────────────────────────────────────────────────────
 if "qa_history" not in st.session_state:
     st.session_state.qa_history = []
 
@@ -105,13 +135,21 @@ for msg in st.session_state.qa_history:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-question = st.chat_input("请输入财务问题，如：2030年动态总投资是多少？")
+question = st.chat_input("请输入财务问题，如：204年管理费用是多少？")
 
 if question:
     # Show user message immediately
     with st.chat_message("user"):
         st.markdown(question)
     st.session_state.qa_history.append({"role": "user", "content": question})
+    
+    # Save user message to database
+    chat_db.save_message(
+        task_id=task.id,
+        role="user",
+        content=question,
+        session_id=st.session_state.qa_session_id,
+    )
 
     # Stream assistant response
     with st.chat_message("assistant"):
@@ -138,6 +176,18 @@ if question:
         st.write_stream(_stream())
 
     st.session_state.qa_history.append({"role": "assistant", "content": state["full_answer"]})
+    
+    # Save assistant message to database
+    chat_db.save_message(
+        task_id=task.id,
+        role="assistant",
+        content=state["full_answer"],
+        metadata={
+            "retrieval": state["retrieval"].contexts[:3] if state["retrieval"] else None,
+        },
+        session_id=st.session_state.qa_session_id,
+    )
+    
     st.session_state["_last_retrieval"] = state["retrieval"]
     st.session_state["_last_cypher"] = state["cypher"]
 
@@ -171,8 +221,31 @@ if last_cypher and last_cypher[0]:
         if last_cypher[1]:
             st.text(last_cypher[1])
 
-if st.button("清空对话"):
+if st.button("清空对话", key="clear_chat_btn"):
     st.session_state.qa_history = []
     st.session_state.pop("_last_retrieval", None)
     st.session_state.pop("_last_cypher", None)
+    chat_db.clear_history(task.id, session_id=st.session_state.qa_session_id)
     st.rerun()
+
+# ── Example Questions ──────────────────────────────────────────────────────────────
+st.divider()
+st.subheader("💡 示例问题")
+example_questions = [
+    "2040年管理费用是多少？",
+    "营业收入近5年的变化趋势？",
+    "营业成本和营业费用的差异？",
+    "哪些指标影响净利润？",
+]
+
+cols = st.columns(len(example_questions))
+for idx, example in enumerate(example_questions):
+    with cols[idx]:
+        if st.button(example, key=f"example_{idx}"):
+            st.session_state["_example_question"] = example
+            st.rerun()
+
+# Handle example question click
+if "_example_question" in st.session_state:
+    example_q = st.session_state.pop("_example_question")
+    st.session_state["_auto_question"] = example_q
