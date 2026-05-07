@@ -50,83 +50,116 @@ if _NAV_KEY not in st.session_state:
 
 nav = st.session_state[_NAV_KEY]
 
-# ── LocalStorage polling for cross-iframe communication ─────────────────────────
-# localStorage is SHARED across all windows with same origin (works reliably!)
-st.markdown("""
-<div id="kg_poll_status" style="background:#fff3e0;padding:8px;font-size:12px;color:#d32f2f;text-align:center;border-radius:4px;margin:10px 0;border:2px solid #ff9800;">
-  🔍 监听图谱节点点击（轮询localStorage中...）
-</div>
+# ── LocalStorage polling iframe (components.html executes JavaScript!) ───────
+# components.html() creates iframe but DOES execute JavaScript (unlike st.markdown)
+poller_html = """
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+body { margin: 0; padding: 0; }
+#status {
+  background: #fff3e0;
+  padding: 8px;
+  font-size: 12px;
+  color: #d32f2f;
+  text-align: center;
+  border-radius: 4px;
+  border: 2px solid #ff9800;
+  margin: 0;
+}
+.success {
+  background: #c8e6c9 !important;
+  color: #1b5e20 !important;
+  border-color: #4caf50 !important;
+  font-weight: bold;
+}
+</style>
+</head>
+<body>
+<div id="status">🔍 监听图谱节点点击（轮询localStorage中...）</div>
 
 <script>
 (function() {
-    console.log('[Poller] Starting localStorage poller');
     var lastTimestamp = 0;
     var pollCount = 0;
+    var statusDiv = document.getElementById('status');
     
-    function updateStatus(msg, success) {
-        var statusDiv = document.getElementById('kg_poll_status');
-        if (statusDiv) {
-            statusDiv.textContent = msg;
-            if (success) {
-                statusDiv.style.background = '#c8e6c9';
-                statusDiv.style.color = '#1b5e20';
-                statusDiv.style.fontWeight = 'bold';
-                statusDiv.style.border = '2px solid #4caf50';
-            }
-        }
+    function log(msg) {
+        console.log('[Poller-iframe] ' + msg);
+        try {
+            window.parent.console.log('[Poller-iframe] ' + msg);
+        } catch(e) {}
     }
     
-    // Poll localStorage every 500ms
+    function updateStatus(msg, success) {
+        statusDiv.textContent = msg;
+        if (success) statusDiv.className = 'success';
+        log('Status: ' + msg);
+    }
+    
+    log('Starting localStorage poller');
+    
     var pollInterval = setInterval(function() {
         pollCount++;
         
         try {
             var timestamp = parseInt(localStorage.getItem('kg_click_timestamp') || '0');
             
-            // Log every 10 polls (reduce noise)
             if (pollCount % 10 === 0) {
-                console.log('[Poller] Poll #' + pollCount + ', timestamp:', timestamp);
+                log('Poll #' + pollCount + ', timestamp: ' + timestamp);
             }
             
             if (timestamp > lastTimestamp) {
                 lastTimestamp = timestamp;
                 var nodeId = localStorage.getItem('kg_clicked_node');
                 
-                console.log('[Poller] ✅ Click detected! Node:', nodeId);
+                log('✅ Click detected! Node: ' + nodeId);
                 updateStatus('✅ 点击已捕获: ' + (nodeId ? nodeId.substring(0, 30) : 'unknown'), true);
                 
-                // Navigate immediately
                 setTimeout(function() {
-                    console.log('[Poller] Navigating to node:', nodeId);
-                    var cleanUrl = window.location.href.split('?')[0];
-                    var newUrl = cleanUrl + '?kg_node_click=' + encodeURIComponent(nodeId);
-                    console.log('[Poller] New URL:', newUrl);
+                    log('Navigating to: ' + nodeId);
                     
-                    // Clear localStorage to prevent repeat navigation
+                    var parentUrl = window.parent.location.href;
+                    var cleanUrl = parentUrl.split('?')[0];
+                    var newUrl = cleanUrl + '?kg_node_click=' + encodeURIComponent(nodeId);
+                    
+                    log('New URL: ' + newUrl);
+                    
                     localStorage.removeItem('kg_click_timestamp');
                     localStorage.removeItem('kg_clicked_node');
                     
-                    window.location.href = newUrl;
-                }, 150);
+                    // Try to navigate parent (may fail due to security)
+                    try {
+                        window.parent.location.href = newUrl;
+                        log('Navigation succeeded!');
+                    } catch(e) {
+                        log('Direct navigation blocked: ' + e.message);
+                        // Fallback: Display clickable link
+                        updateStatus('⚠️ 请点击这里跳转', false);
+                        statusDiv.innerHTML = '<a href="' + newUrl + '" target="_parent" style="color:#1976d2;">⚠️ 点击已捕获，请点击这里跳转到节点详情</a>';
+                    }
+                }, 200);
             }
         } catch(e) {
-            console.error('[Poller] Error:', e);
+            log('Error: ' + e.message);
             updateStatus('❌ 错误: ' + e.message, false);
         }
     }, 500);
     
-    updateStatus('🔍 监听图谱节点点击（轮询localStorage中...）', false);
-    console.log('[Poller] localStorage poller active (polling every 500ms)');
+    log('Poller active (every 500ms)');
     
-    // Stop after 2 minutes
     setTimeout(function() {
         clearInterval(pollInterval);
         updateStatus('⏱️ 监听已停止（超时）', false);
-        console.log('[Poller] Poller stopped (timeout)');
+        log('Poller stopped (timeout)');
     }, 120000);
 })();
 </script>
-""", unsafe_allow_html=True)
+</body>
+</html>
+"""
+components.html(poller_html, height=50)
 
 # ── Handle graph node click from URL ────────────────────────────────────────
 clicked_node_id = None
