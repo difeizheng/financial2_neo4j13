@@ -14,6 +14,44 @@
 
 ## Progress
 
+### Done (v36.0.0 - 2026-05-07)
+- **Enhanced: Snapshot Comparison Page with Advanced Analytics**
+  * Complete redesign with 4 tabs: Overview, Key Changes, Stats, Details
+  * Auto-compare mode: optional instant comparison on snapshot selection
+  * Top 10 ranking tables by impact score (downstream influence + change magnitude)
+  * Statistical charts: pie charts, bar charts, histograms, combined dashboard
+  * Change categorization: minor (<5%), moderate (5-20%), major (20-50%), critical (>50%)
+  * Color-coded highlighting: green/yellow/red/white based on change magnitude
+  * Multi-dimensional filtering: by Sheet, name, impact level
+  * New modules: change_ranker.py (impact analysis), stats_charts.py (visualization)
+  * Files: `financial_kg/analysis/change_ranker.py` (150 lines), `financial_kg/viz/stats_charts.py` (210 lines)
+  * Redesigned: `pages/04_compare.py` (280 lines, from 173)
+  * Git: 6838bd6 "feat: enhance snapshot comparison page with advanced analytics"
+- **Technical Implementation**:
+  * Impact score formula: `downstream_weight * 10 + change_pct / 10`
+  * Ranking logic: sort by impact_score descending, return top N
+  * Chart generation: plotly graphs for distribution and magnitude visualization
+  * UI tabs: st.tabs() for step-by-step information display
+  * Auto-compare: checkbox + conditional execution logic
+  * Bug fix: go.Pie parameter error (names → labels, specs type: pie → domain)
+- **Key UX Improvements**:
+  * Information hierarchy: Overview (quick metrics) → Key Changes (Top 10) → Stats (charts) → Details (full tables)
+  * Smart ranking: prioritize changes with most downstream impact
+  * Visual feedback: color-coded categories for instant recognition
+  * Reduced cognitive load: 4 tabs instead of single dense page
+  * Optional auto-execution: save clicks for common use case
+- **Module Architecture**:
+  * `financial_kg/analysis/`: new package for analytical logic
+    - `change_ranker.py`: impact-based ranking algorithms
+    - `__init__.py`: package exports
+  * `financial_kg/viz/stats_charts.py`: statistical chart generation
+    - Pie charts: sheet distribution, indicator distribution
+    - Bar charts: top 10 magnitude (indicator/cell)
+    - Histograms: change category distribution
+    - Combined dashboard: 4-chart composite view
+    - DataFrame styling: conditional highlighting
+- **Next**: Test with multi-snapshot scenarios, collect user feedback on ranking quality
+
 ### Done (v35.2.1 - 2026-05-07)
 - **Fixed: StreamlitAPIException** (pages/03_recalc.py)
   * Issue: Widget key `prop_nodes` conflict with session_state assignment
@@ -174,6 +212,19 @@
 - v27.0.0: Year inference (204→2040, 24→2024) + Chat history persistence SQLite
 
 ## Key Decisions
+- **Snapshot Comparison Enhancement**: Complete redesign vs incremental improvements
+  * Decision: Complete redesign with new tabs and ranking system
+  * Reason: User feedback: lacking visualization, ranking, charts, dense layout
+  * Result: 4 tabs (Overview→Key→Stats→Details), impact-based ranking, statistical charts
+  * Impact score: downstream_count * 10 + change_pct / 10 (balance influence vs magnitude)
+- **Auto-compare Mode**: Optional automatic execution
+  * Decision: Checkbox-controlled auto execution (default True)
+  * Reason: Save clicks for common workflow, optional for edge cases
+  * Result: Instant comparison on snapshot selection, manual override available
+- **Module Architecture**: Separate analysis from visualization
+  * Decision: New packages: financial_kg/analysis/ + financial_kg/viz/stats_charts.py
+  * Reason: Separation of concerns, reusable modules, future extensibility
+  * Result: change_ranker (impact logic) + stats_charts (chart generation)
 - **UI Refactor Strategy**: Complete redesign vs incremental improvements
   * Decision: Complete refactor with new pages (better UX, separation of concerns)
   * Reason: Original upload page crowded (history + Neo4j + upload all mixed)
@@ -203,6 +254,13 @@
 - **Chart generation**: Automatic numeric detection (try float conversion), pivot_table for trends
 
 ## Next Steps
+1. Test v36.0.0 enhanced snapshot comparison with real data
+2. Verify ranking quality: downstream influence vs change magnitude balance
+3. Evaluate chart effectiveness: distribution pies, magnitude bars, histograms
+4. Collect user feedback on new 4-tab layout and auto-compare mode
+5. Performance testing: large snapshot datasets (1000+ changed cells)
+6. Multi-snapshot scenarios: trend comparison for ≥3 snapshots (future enhancement)
+7. Consider additional statistical metrics: average impact depth, propagation speed
 1. Test v34.0.0 UI enhancements with sample Excel files
 2. Verify all new pages work correctly:
    * Upload page: drag-drop, preview, progress steps, success animations
@@ -289,6 +347,29 @@
 
 ## Relevant Files
 
+### Snapshot Comparison (v36.0.0)
+- `financial_kg/analysis/change_ranker.py`: Impact-based ranking algorithms
+  * rank_changes_by_impact(): sort cells by downstream influence + change magnitude
+  * rank_indicator_changes_by_impact(): sort indicators by aggregated impact
+  * calculate_change_pct(): percentage change calculation
+  * calculate_impact_score(): composite scoring formula
+  * get_change_category(): classify change magnitude (minor/moderate/major/critical)
+  * get_change_color(): color hex codes for visualization
+- `financial_kg/analysis/__init__.py`: Package exports
+- `financial_kg/viz/stats_charts.py`: Statistical chart generation
+  * build_sheet_distribution_pie(): pie chart for sheet distribution
+  * build_indicator_distribution_pie(): pie chart for indicator distribution
+  * build_change_magnitude_bar(): bar chart for top 10 changes
+  * build_change_category_histogram(): histogram for category distribution
+  * build_combined_stats_dashboard(): 4-chart composite dashboard
+  * create_styled_dataframe(): conditional DataFrame styling
+- `pages/04_compare.py`: Enhanced snapshot comparison UI
+  * 4 tabs: Overview (metrics + pies), Key Changes (Top 10), Stats (charts), Details (full tables)
+  * Auto-compare mode: checkbox + conditional execution
+  * Impact ranking: Top 10 tables by downstream influence
+  * Multi-filter: Sheet + name + impact level
+  * Propagation graph: retained from v35.2.0
+
 ### Core Retrieval Components
 - `financial_kg/llm/category_classifier.py`: INDICATOR_CATEGORIES (15 classes), CATEGORY_KEYWORDS (80+ keywords)
 - `financial_kg/llm/prompt_builder.py`: build_system_prompt() with financial analyst template
@@ -314,6 +395,16 @@
 - `memory.md`: Session memory for context preservation
 
 ## Version History
+
+- **v36.0.0** (2026-05-07): Enhanced snapshot comparison with advanced analytics
+  * Complete redesign: 4 tabs (Overview, Key Changes, Stats, Details)
+  * Impact-based ranking: downstream influence + change magnitude scoring
+  * Statistical visualization: pie charts, bar charts, histograms, combined dashboard
+  * Change categorization: minor/moderate/major/critical with color coding
+  * Auto-compare mode: optional instant comparison
+  * New modules: change_ranker (impact analysis), stats_charts (visualization)
+  * Files: 4 changed, 802 insertions(+), 111 deletions(-)
+  * Bug fix: go.Pie parameter error (names → labels)
 
 - **v35.2.1** (2026-05-07): Fix StreamlitAPIException - widget key conflict
   * Rename session_state key: `prop_nodes` → `prop_nodes_actual`
@@ -363,7 +454,32 @@
 - **v13.0.0**: Graph node navigation removal (iframe sandbox)
 - Earlier versions: v1.0.0 to v12.0.0 (basic features)
 
-## Session Summary (2026-05-07)
+## Session Summary (2026-05-07 - Evening)
+
+### What We Did
+1. Enhanced snapshot comparison page based on user feedback
+2. Created change_ranker module: impact-based ranking logic (150 lines)
+3. Created stats_charts module: statistical visualization (210 lines)
+4. Redesigned 04_compare.py: 4 tabs, auto-compare, Top 10 ranking (280 lines)
+5. Fixed go.Pie parameter error: names → labels, specs type correction
+6. Git commit: 4 files changed, 802 insertions(+), 111 deletions(-)
+7. Created git tag: v36.0.0
+8. Pushed to GitHub: https://github.com/difeizheng/financial2_neo4j13
+
+### Expected Impact
+- User experience: Step-by-step information display vs single dense page
+- Analysis quality: Impact-based ranking prioritizes important changes
+- Visual clarity: Charts and color coding for instant recognition
+- Workflow efficiency: Auto-compare saves clicks for common use case
+- Cognitive load: 4 tabs organize information hierarchically
+
+### Next Session Focus
+- Test v36.0.0 with multi-snapshot scenarios (≥3 snapshots)
+- Collect user feedback on ranking quality and visualization effectiveness
+- Optimize performance for large snapshot datasets
+- Consider trend comparison for ≥3 snapshot series
+
+## Session Summary (2026-05-07 - Morning)
 
 ### What We Did
 1. Complete UI refactor based on user feedback
