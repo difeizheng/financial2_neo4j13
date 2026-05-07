@@ -135,9 +135,26 @@ body { margin: 0; padding: 0; }
                         log('Navigation succeeded!');
                     } catch(e) {
                         log('Direct navigation blocked: ' + e.message);
-                        // Fallback: Display clickable link
-                        updateStatus('⚠️ 请点击这里跳转', false);
-                        statusDiv.innerHTML = '<a href="' + newUrl + '" target="_parent" style="color:#1976d2;">⚠️ 点击已捕获，请点击这里跳转到节点详情</a>';
+                        // Fallback: Show clickable button with JavaScript navigation
+                        updateStatus('✅ 点击已捕获（请点击下方按钮跳转）', true);
+                        statusDiv.innerHTML = 
+                            '<div style="padding:10px;background:#c8e6c9;border-radius:4px;">' +
+                            '<div style="font-size:12px;color:#1b5e20;margin-bottom:8px;">✅ 点击已捕获: ' + (nodeId ? nodeId.substring(0, 25) : 'unknown') + '</div>' +
+                            '<button onclick="handleNavigate()" style="background:#4caf50;color:white;padding:8px 16px;border:none;border-radius:4px;font-size:14px;cursor:pointer;width:100%;">点击跳转到节点详情</button>' +
+                            '</div>' +
+                            '<script>' +
+                            'function handleNavigate() {' +
+                            '  console.log("[Poller-iframe] Button clicked, navigating...");' +
+                            '  var url = "' + newUrl + '";' +
+                            '  try {' +
+                            '    window.open(url, "_top");' +
+                            '  } catch(e) {' +
+                            '    console.error("[Poller-iframe] window.open failed:", e);' +
+                            '    window.location.href = url;' +
+                            '  }' +
+                            '}' +
+                            '</script>';
+                        log('Fallback button displayed');
                     }
                 }, 200);
             }
