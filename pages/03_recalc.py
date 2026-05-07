@@ -17,8 +17,62 @@ from financial_kg.llm.category_classifier import INDICATOR_CATEGORIES
 st.set_page_config(page_title="参数重算", layout="wide")
 st.title("⚙️ 参数修改 & 增量重算")
 
-# ── Task selection ─────────────────────────────────────────────────────────────
+# ── Initialize database (BEFORE function definitions) ─────────────────────────────
 db = TaskDB()
+
+# ── Helper functions (defined BEFORE use) ────────────────────────────────────────
+def _execute_recalc(graph, task, updates, snap_before_name, snap_after_name):
+    """Execute recalculation with snapshots and display results."""
+    
+    # Snapshot before
+    if snap_before_name.strip():
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        snap_name_auto = f"{snap_before_name.strip()}-{timestamp}"
+        snap_b = create_snapshot(graph, task.id, snap_name_auto)
+        db.save_snapshot(str(uuid.uuid4())[:8], task.id, snap_name_auto, snap_b.filepath)
+        st.toast(f"快照「{snap_name_auto}」已保存", icon="📸")
+    
+    # Recalculate
+    with st.spinner("重算中..."):
+        result = recalculate(graph, updates)
+    
+    # Snapshot after
+    if snap_after_name.strip():
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        snap_name_auto = f"{snap_after_name.strip()}-{timestamp}"
+        snap_a = create_snapshot(graph, task.id, snap_name_auto)
+        db.save_snapshot(str(uuid.uuid4())[:8], task.id, snap_name_auto, snap_a.filepath)
+        st.toast(f"快照「{snap_name_auto}」已保存", icon="📸")
+    
+    # Save result to session state
+    st.session_state["last_recalc_result"] = result
+    
+    # Show success message
+    st.success(f"✅ 重算完成：{result.affected_count} 个单元格变化，{len(result.error_cells)} 个求值失败")
+    
+    # Rerun to refresh comparison tab
+    st.rerun()
+
+def _get_downstream_chain(graph, cell_id, depth=3):
+    """Get downstream dependency chain with depth limit."""
+    chain = []
+    visited = set()
+    
+    def traverse(cid, level):
+        if level > depth or cid in visited:
+            return
+        visited.add(cid)
+        
+        cell = graph.cells.get(cid)
+        if cell and cell.dependents:
+            for dep_id in cell.dependents:
+                chain.append((dep_id, level))
+                traverse(dep_id, level + 1)
+    
+    traverse(cell_id, 1)
+    return chain
+
+# ── Task selection ─────────────────────────────────────────────────────────────
 tasks = [t for t in db.list_tasks() if t.status == "done"]
 
 if not tasks:
@@ -443,55 +497,3 @@ with col_right:
         
         else:
             st.info("尚未执行重算，请在左侧面板或搜索标签页修改参数")
-
-# ── Helper functions ────────────────────────────────────────────────────────────
-def _execute_recalc(graph, task, updates, snap_before_name, snap_after_name):
-    """Execute recalculation with snapshots and display results."""
-    
-    # Snapshot before
-    if snap_before_name.strip():
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        snap_name_auto = f"{snap_before_name.strip()}-{timestamp}"
-        snap_b = create_snapshot(graph, task.id, snap_name_auto)
-        db.save_snapshot(str(uuid.uuid4())[:8], task.id, snap_name_auto, snap_b.filepath)
-        st.toast(f"快照「{snap_name_auto}」已保存", icon="📸")
-    
-    # Recalculate
-    with st.spinner("重算中..."):
-        result = recalculate(graph, updates)
-    
-    # Snapshot after
-    if snap_after_name.strip():
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        snap_name_auto = f"{snap_after_name.strip()}-{timestamp}"
-        snap_a = create_snapshot(graph, task.id, snap_name_auto)
-        db.save_snapshot(str(uuid.uuid4())[:8], task.id, snap_name_auto, snap_a.filepath)
-        st.toast(f"快照「{snap_name_auto}」已保存", icon="📸")
-    
-    # Save result to session state
-    st.session_state["last_recalc_result"] = result
-    
-    # Show success message
-    st.success(f"✅ 重算完成：{result.affected_count} 个单元格变化，{len(result.error_cells)} 个求值失败")
-    
-    # Rerun to refresh comparison tab
-    st.rerun()
-
-def _get_downstream_chain(graph, cell_id, depth=3):
-    """Get downstream dependency chain with depth limit."""
-    chain = []
-    visited = set()
-    
-    def traverse(cid, level):
-        if level > depth or cid in visited:
-            return
-        visited.add(cid)
-        
-        cell = graph.cells.get(cid)
-        if cell and cell.dependents:
-            for dep_id in cell.dependents:
-                chain.append((dep_id, level))
-                traverse(dep_id, level + 1)
-    
-    traverse(cell_id, 1)
-    return chain
