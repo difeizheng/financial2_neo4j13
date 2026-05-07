@@ -19,24 +19,29 @@ _NODE_CLICK_SCRIPT = """
     var checkInterval = setInterval(function() {
         if (window.network) {
             clearInterval(checkInterval);
-            console.log('Network found, attaching click handler');
+            console.log('[Graph] Network found, attaching click handler');
             window.network.on('click', function(params) {
                 if (params.nodes && params.nodes.length > 0) {
                     var nodeId = params.nodes[0];
-                    console.log('Node clicked:', nodeId);
+                    console.log('[Graph] Node clicked:', nodeId);
                     
-                    // Use localStorage as communication bridge
+                    // Send postMessage to parent window (PRIMARY method)
                     try {
-                        localStorage.setItem('kg_clicked_node', nodeId);
-                        localStorage.setItem('kg_click_timestamp', Date.now());
-                        // Force parent window to detect the change
-                        if (window.parent && window.parent !== window) {
-                            window.parent.postMessage({type: 'kg_node_click', nodeId: nodeId}, '*');
-                        }
-                        // Visual feedback in graph
+                        window.parent.postMessage({
+                            type: 'kg_node_clicked',
+                            nodeId: nodeId,
+                            timestamp: Date.now()
+                        }, '*');
+                        console.log('[Graph] postMessage sent:', nodeId);
+                        
+                        // Visual feedback: highlight the clicked node
                         window.network.selectNodes([nodeId]);
+                        
+                        // Backup: localStorage (for debugging)
+                        localStorage.setItem('kg_clicked_node', nodeId);
+                        localStorage.setItem('kg_click_timestamp', Date.now().toString());
                     } catch(e) {
-                        console.error('Failed to save click data:', e);
+                        console.error('[Graph] postMessage failed:', e);
                     }
                 }
             });
