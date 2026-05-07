@@ -558,11 +558,11 @@ with col_right:
                         
                         st.session_state["prop_html"] = prop_html
                         st.session_state["prop_truncated"] = prop_data["stats"]["truncated"]
-                        st.session_state["prop_nodes"] = prop_data["stats"]["total_nodes"]
+                        st.session_state["prop_nodes_actual"] = prop_data["stats"]["total_nodes"]
                     
                     if "prop_html" in st.session_state:
                         if st.session_state.get("prop_truncated"):
-                            st.warning(f"图谱已截断至 {st.session_state['prop_nodes']} 个节点（下游更多）")
+                            st.warning(f"图谱已截断至 {st.session_state['prop_nodes_actual']} 个节点（下游更多）")
                         
                         components.html(st.session_state["prop_html"], height=780, scrolling=False)
         
