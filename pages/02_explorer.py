@@ -98,9 +98,9 @@ body { margin: 0; padding: 0; }
         log('Status: ' + msg);
     }
     
-    // Global navigation handler (called by button onclick)
+    // Global navigation handler (opens in NEW TAB to bypass sandbox)
     window.handleNavigate = function() {
-        log('Button clicked! Navigating...');
+        log('Button clicked! Opening in new tab...');
         try {
             var url = window.targetNavigateUrl;
             if (!url) {
@@ -108,15 +108,16 @@ body { margin: 0; padding: 0; }
                 return;
             }
             log('Target URL: ' + url);
-            window.open(url, '_top');
-            log('Navigation triggered via window.open');
+            
+            // Open in NEW TAB (bypasses sandbox restrictions)
+            window.open(url, '_blank');
+            log('✅ New tab opened successfully');
+            
+            // Clear status after navigation
+            updateStatus('✅ 已在新标签页打开节点详情', true);
         } catch(e) {
             log('window.open failed: ' + e.message);
-            // Final fallback
-            if (window.targetNavigateUrl) {
-                window.location.href = window.targetNavigateUrl;
-                log('Fallback: window.location.href used');
-            }
+            updateStatus('❌ 跳转失败: ' + e.message, false);
         }
     };
     
@@ -167,7 +168,7 @@ body { margin: 0; padding: 0; }
                         statusDiv.innerHTML = 
                             '<div style="padding:10px;background:#c8e6c9;border-radius:4px;">' +
                             '<div style="font-size:12px;color:#1b5e20;margin-bottom:8px;">✅ 点击已捕获: ' + (nodeId ? nodeId.substring(0, 25) : 'unknown') + '</div>' +
-                            '<button onclick="handleNavigate()" style="background:#4caf50;color:white;padding:8px 16px;border:none;border-radius:4px;font-size:14px;cursor:pointer;width:100%;">点击跳转到节点详情</button>' +
+                            '<button onclick="handleNavigate()" style="background:#4caf50;color:white;padding:8px 16px;border:none;border-radius:4px;font-size:14px;cursor:pointer;width:100%;">在新标签页打开节点详情</button>' +
                             '</div>';
                         log('Fallback button displayed (onclick will use window.targetNavigateUrl)');
                     }
