@@ -13,51 +13,6 @@ except ImportError:
     _PYVIS_AVAILABLE = False
 
 
-_NODE_CLICK_SCRIPT = """
-<script>
-(function() {
-    var checkInterval = setInterval(function() {
-        if (window.network) {
-            clearInterval(checkInterval);
-            console.log('[Graph] Network found, attaching click handler');
-            window.network.on('click', function(params) {
-                if (params.nodes && params.nodes.length > 0) {
-                    var nodeId = params.nodes[0];
-                    console.log('[Graph] Node clicked:', nodeId);
-                    
-                    // Send postMessage to parent window (PRIMARY method)
-                    try {
-                        window.parent.postMessage({
-                            type: 'kg_node_clicked',
-                            nodeId: nodeId,
-                            timestamp: Date.now()
-                        }, '*');
-                        console.log('[Graph] postMessage sent:', nodeId);
-                        
-                        // Visual feedback: highlight the clicked node
-                        window.network.selectNodes([nodeId]);
-                        
-                        // Backup: localStorage (for debugging)
-                        localStorage.setItem('kg_clicked_node', nodeId);
-                        localStorage.setItem('kg_click_timestamp', Date.now().toString());
-                    } catch(e) {
-                        console.error('[Graph] postMessage failed:', e);
-                    }
-                }
-            });
-        }
-    }, 200);
-    setTimeout(function() { clearInterval(checkInterval); }, 5000);
-})();
-</script>
-"""
-
-
-def _inject_click_handler(html_content: str) -> str:
-    """Inject JavaScript click handler into pyvis HTML."""
-    return html_content.replace("</body>", _NODE_CLICK_SCRIPT + "</body>")
-
-
 # Node/edge color palette
 _COLORS = {
     "cell_formula": "#9E9E9E",
@@ -181,14 +136,6 @@ def build_indicator_graph(
         os.close(fd)
 
     net.save_graph(output_path)
-    
-    # Inject click handler
-    with open(output_path, encoding="utf-8") as f:
-        html_content = f.read()
-    html_content = _inject_click_handler(html_content)
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(html_content)
-    
     return output_path
 
 
@@ -253,14 +200,6 @@ def build_cell_subgraph(
         os.close(fd)
 
     net.save_graph(output_path)
-    
-    # Inject click handler
-    with open(output_path, encoding="utf-8") as f:
-        html_content = f.read()
-    html_content = _inject_click_handler(html_content)
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(html_content)
-    
     return output_path
 
 
@@ -326,14 +265,6 @@ def build_table_graph(
         os.close(fd)
 
     net.save_graph(output_path)
-    
-    # Inject click handler
-    with open(output_path, encoding="utf-8") as f:
-        html_content = f.read()
-    html_content = _inject_click_handler(html_content)
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(html_content)
-    
     return output_path
 
 
@@ -431,14 +362,6 @@ def build_indicator_subgraph(
         os.close(fd)
 
     net.save_graph(output_path)
-    
-    # Inject click handler
-    with open(output_path, encoding="utf-8") as f:
-        html_content = f.read()
-    html_content = _inject_click_handler(html_content)
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(html_content)
-    
     return output_path
 
 
@@ -528,12 +451,4 @@ def build_indicator_cell_graph(
         os.close(fd)
 
     net.save_graph(output_path)
-    
-    # Inject click handler
-    with open(output_path, encoding="utf-8") as f:
-        html_content = f.read()
-    html_content = _inject_click_handler(html_content)
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(html_content)
-    
     return output_path
