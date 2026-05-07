@@ -98,6 +98,28 @@ body { margin: 0; padding: 0; }
         log('Status: ' + msg);
     }
     
+    // Global navigation handler (called by button onclick)
+    window.handleNavigate = function() {
+        log('Button clicked! Navigating...');
+        try {
+            var url = window.targetNavigateUrl;
+            if (!url) {
+                log('ERROR: window.targetNavigateUrl not set');
+                return;
+            }
+            log('Target URL: ' + url);
+            window.open(url, '_top');
+            log('Navigation triggered via window.open');
+        } catch(e) {
+            log('window.open failed: ' + e.message);
+            // Final fallback
+            if (window.targetNavigateUrl) {
+                window.location.href = window.targetNavigateUrl;
+                log('Fallback: window.location.href used');
+            }
+        }
+    };
+    
     log('Starting localStorage poller');
     
     var pollInterval = setInterval(function() {
@@ -135,26 +157,19 @@ body { margin: 0; padding: 0; }
                         log('Navigation succeeded!');
                     } catch(e) {
                         log('Direct navigation blocked: ' + e.message);
-                        // Fallback: Show clickable button with JavaScript navigation
+                        
+                        // Store URL in global variable (safer than string concatenation)
+                        window.targetNavigateUrl = newUrl;
+                        log('URL stored in window.targetNavigateUrl');
+                        
+                        // Fallback: Show clickable button
                         updateStatus('✅ 点击已捕获（请点击下方按钮跳转）', true);
                         statusDiv.innerHTML = 
                             '<div style="padding:10px;background:#c8e6c9;border-radius:4px;">' +
                             '<div style="font-size:12px;color:#1b5e20;margin-bottom:8px;">✅ 点击已捕获: ' + (nodeId ? nodeId.substring(0, 25) : 'unknown') + '</div>' +
                             '<button onclick="handleNavigate()" style="background:#4caf50;color:white;padding:8px 16px;border:none;border-radius:4px;font-size:14px;cursor:pointer;width:100%;">点击跳转到节点详情</button>' +
-                            '</div>' +
-                            '<script>' +
-                            'function handleNavigate() {' +
-                            '  console.log("[Poller-iframe] Button clicked, navigating...");' +
-                            '  var url = "' + newUrl + '";' +
-                            '  try {' +
-                            '    window.open(url, "_top");' +
-                            '  } catch(e) {' +
-                            '    console.error("[Poller-iframe] window.open failed:", e);' +
-                            '    window.location.href = url;' +
-                            '  }' +
-                            '}' +
-                            '</script>';
-                        log('Fallback button displayed');
+                            '</div>';
+                        log('Fallback button displayed (onclick will use window.targetNavigateUrl)');
                     }
                 }, 200);
             }
