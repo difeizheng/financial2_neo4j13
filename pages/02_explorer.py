@@ -50,23 +50,24 @@ if _NAV_KEY not in st.session_state:
 
 nav = st.session_state[_NAV_KEY]
 
-# ── postMessage listener for iframe communication ────────────────────────────
-# Standard cross-iframe communication: iframe sends message, main window receives
-postMessage_listener = """
+# ── Main window postMessage listener (NOT in iframe!) ────────────────────────────
+# Critical: must listen in main window context, not inside another iframe!
+st.markdown("""
 <script>
 (function() {
-    console.log('[Listener] Setting up postMessage handler');
+    console.log('[MainWindow] Setting up global postMessage handler');
     
+    // Listen in MAIN WINDOW (not iframe)
     window.addEventListener('message', function(event) {
-        console.log('[Listener] Received message:', event.data);
+        console.log('[MainWindow] Received message:', event.data);
         
         // Check if it's our graph click message
         if (event.data && event.data.type === 'kg_node_clicked') {
             var nodeId = event.data.nodeId;
-            console.log('[Listener] Node click detected:', nodeId);
+            console.log('[MainWindow] Node click detected:', nodeId);
             
             // Update the status indicator
-            var statusDiv = document.getElementById('kg_listener_status');
+            var statusDiv = document.getElementById('kg_main_status');
             if (statusDiv) {
                 statusDiv.textContent = '✅ 点击已捕获: ' + nodeId.substring(0, 30);
                 statusDiv.style.background = '#c8e6c9';
@@ -74,28 +75,27 @@ postMessage_listener = """
                 statusDiv.style.fontWeight = 'bold';
             }
             
-            // Navigate by updating URL (this IS allowed from main window)
+            // Navigate by updating URL (allowed from main window)
             setTimeout(function() {
-                console.log('[Listener] Updating URL for navigation');
+                console.log('[MainWindow] Updating URL for navigation');
                 var currentUrl = window.location.href;
                 var cleanUrl = currentUrl.split('?')[0];
                 var newUrl = cleanUrl + '?kg_node_click=' + encodeURIComponent(nodeId);
                 
-                console.log('[Listener] New URL:', newUrl);
+                console.log('[MainWindow] New URL:', newUrl);
                 window.location.href = newUrl;
             }, 100);
         }
     }, false);
     
-    console.log('[Listener] postMessage handler active');
+    console.log('[MainWindow] Global postMessage handler active');
 })();
 </script>
 
-<div id="kg_listener_status" style="background:#fff3e0;padding:8px;font-size:12px;color:#d32f2f;text-align:center;border-radius:4px;margin:5px 0;">
-  🔍 监听图谱节点点击（等待中...）
+<div id="kg_main_status" style="background:#fff3e0;padding:8px;font-size:12px;color:#d32f2f;text-align:center;border-radius:4px;margin:10px 0;border:2px solid #ff9800;">
+  🔍 全局监听图谱节点点击（主窗口监听器已启动）
 </div>
-"""
-components.html(postMessage_listener, height=40)
+""", unsafe_allow_html=True)
 
 # ── Handle graph node click from URL ────────────────────────────────────────
 clicked_node_id = None
