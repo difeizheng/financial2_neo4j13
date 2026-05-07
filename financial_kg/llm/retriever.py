@@ -176,7 +176,7 @@ class IndicatorRetriever:
                 time_series_str = " | ".join(f"{k}={v}" for k, v in ts_items)
             
             category_str = ind.category or "未分类"
-            formula_str = ind.formula_raw or "无公式"
+            formula_str = ind.formula_readable or ind.description or "无公式"
             
             line = f"{idx}. {ind.id}\n"
             line += f"   名称: {ind.name}\n"
