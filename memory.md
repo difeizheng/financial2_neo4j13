@@ -14,6 +14,21 @@
 
 ## Progress
 
+### Done (v35.2.1 - 2026-05-07)
+- **Fixed: StreamlitAPIException** (pages/03_recalc.py)
+  * Issue: Widget key `prop_nodes` conflict with session_state assignment
+  * Error: `st.session_state.prop_nodes cannot be modified after widget instantiation`
+  * Fix: Rename session_state key to `prop_nodes_actual` to avoid conflict
+  * Root cause: slider widget creates session_state["prop_nodes"], cannot overwrite later
+  * Solution: Use different key for actual nodes count vs widget value
+  * File: `pages/03_recalc.py` (line 561, 565)
+  * Git: 7baa2c2 "fix: rename session_state key to avoid widget conflict"
+- **Technical Insight**:
+  * Streamlit widgets auto-create session_state entries on instantiation
+  * Cannot modify widget's session_state value after creation
+  * Best practice: use separate keys for widget state vs computed values
+  * Example: `key="prop_nodes"` (widget) vs `key="prop_nodes_actual"` (computed)
+
 ### Done (v35.2.0 - 2026-05-07)
 - **Enhanced: Dependency Propagation Visualization** (pages/03_recalc.py)
   * Replaced simplified tree view with interactive ECharts graph
@@ -300,6 +315,22 @@
 
 ## Version History
 
+- **v35.2.1** (2026-05-07): Fix StreamlitAPIException - widget key conflict
+  * Rename session_state key: `prop_nodes` → `prop_nodes_actual`
+  * Root cause: widget creates session_state entry, cannot modify after instantiation
+  * Solution: use separate keys for widget state vs computed values
+- **v35.2.0** (2026-05-07): Interactive ECharts propagation graph
+  * Replace simplified tree view with interactive graph
+  * Search propagation root: filter by Cell ID, Sheet, value
+  * Configurable controls: max depth (1-15), max nodes (100-2000)
+  * Interactive features: zoom, pan, click nodes for details
+  * Color-coded nodes: root, changed cells, downstream cells
+  * Helper function: `_recalc_result_to_diff()` conversion
+- **v35.1.0** (2026-05-07): Multi-level filtering for parameter quick view
+  * Name search: fuzzy match indicator_name, cell_id, value
+  * Value type filter: 数值型 vs 文本型
+  * Formula type filter: 无公式(参数) vs 有公式(计算)
+  * Formula safety: distinguish modifiable cells vs view-only formula cells
 - **v35.0.0** (2026-05-07): Complete refactor of parameter modification page
   * Dual-column layout: left panel (parameter quick view), right panel (search & compare)
   * Categorized parameter indicators (15 classes)
