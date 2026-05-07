@@ -11,5 +11,5 @@ tasks.db
 .claude/
 output/*.json
 output/*.xlsx
-snapshots/*.json
+snapshots/
 *.xlsx
