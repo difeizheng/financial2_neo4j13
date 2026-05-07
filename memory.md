@@ -17,7 +17,13 @@
 ### Done (v35.0.0 - 2026-05-07)
 - **Complete Refactor: Parameter Modification Page** (pages/03_recalc.py)
   * Replaced nested 5-step selection with dual-column layout
-  * Left panel: Parameter quick view (categorized by 15 indicator classes)
+  * Left panel: Parameter quick view with **4-level filtering**:
+    - Name search: fuzzy match indicator_name, cell_id, value
+    - Value type: 数值型 vs 文本型
+    - Formula type: 无公式(参数) vs 有公式(计算)
+    - Category: 15 indicator classes (收入类/成本类/...)
+  * Formula cells: show formula but no modification (safety guard)
+  * Non-formula cells: allow quick modification + batch selection
   * Right panel: Search + Before/After comparison view
   * Batch modification support (select multiple parameters → one-click recalc)
   * Auto snapshot naming with timestamp (no manual input required)
@@ -25,18 +31,20 @@
   * Color-coded change highlighting (>5% growth = green, >5% drop = red)
   * Pagination for search results (20 per page, avoid long lists)
   * Quick modify button for single-cell editing
-  * File: `pages/03_recalc.py` (350+ lines, complete rewrite)
+  * File: `pages/03_recalc.py` (500+ lines, complete rewrite)
 - **Key UX Improvements**:
   * Workflow: 2 steps (click indicator → modify value) vs old 5 steps
-  * Parameter categorization:收入类/成本类/费用类/利润类/投资类... (15 classes)
+  * Multi-level filtering: name + value type + formula + category
+  * Formula safety: distinguish input cells (modifiable) vs formula cells (view only)
   * Batch mode: "逐个输入值" or "统一变化幅度(%)" for scenario testing
   * Comparison tab: statistics + before/after table + dependency tree
   * Success rate metric: affected_cells / (affected + errors)
 - **Technical Changes**:
-  * Identify parameter cells: cells without formula_raw (input cells)
+  * Identify all cells: not just parameters, support formula cell filtering
   * Categorize indicators: match INDICATOR_CATEGORIES keywords
   * Dependency chain traversal: depth limit 3, show downstream impact
   * Snapshot auto-naming: "{name}-{timestamp}" format
+  * Value type detection: isinstance(value, (int, float)) → 数值型
 - **Next**: Test with real Excel files, collect user feedback, optimize performance
 - **UI Complete Refactor**: Enhanced upload page with modern UX
   * Drag-drop upload support with visual feedback

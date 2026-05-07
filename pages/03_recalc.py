@@ -36,88 +36,157 @@ def _load(task_id: str, output_dir: str):
 
 graph = _load(task.id, task.output_dir)
 
-# ── Identify parameter cells (input cells without formulas) ────────────────────
-def get_parameter_indicators():
-    """Find indicators that contain parameter cells (cells without formulas)."""
-    param_indicators = {}
+# ── Identify ALL cells (not just parameters) for filtering ─────────────────────
+def get_all_cells_with_filters():
+    """Get all cells with metadata for filtering (name, value_type, formula status)."""
+    cells_data = []
     
-    for ind_id, ind in graph.indicators.items():
-        param_cells = []
-        for cell_id in ind.cell_ids:
-            cell = graph.cells.get(cell_id)
-            if cell and not cell.formula_raw:
-                param_cells.append({
-                    "cell_id": cell_id,
-                    "value": cell.value,
-                    "sheet": cell.sheet,
-                    "row": cell.row,
-                    "col": cell.col,
-                })
+    for cell_id, cell in graph.cells.items():
+        # Determine value type
+        value_type = "数值型" if isinstance(cell.value, (int, float)) else "文本型"
         
-        if param_cells:
-            param_indicators[ind_id] = {
-                "name": ind.name,
-                "unit": ind.unit or "",
-                "summary_value": ind.summary_value,
-                "cells": param_cells,
-            }
+        # Get indicator name
+        ind_name = ""
+        if cell.indicator_id:
+            ind = graph.indicators.get(cell.indicator_id)
+            ind_name = ind.name if ind else ""
+        
+        cells_data.append({
+            "cell_id": cell_id,
+            "indicator_name": ind_name,
+            "value": cell.value,
+            "value_type": value_type,
+            "has_formula": bool(cell.formula_raw),
+            "formula": cell.formula_raw,
+            "sheet": cell.sheet,
+            "row": cell.row,
+            "col": cell.col,
+            "unit": "",
+        })
+        
+        # Add unit from indicator
+        if cell.indicator_id:
+            ind = graph.indicators.get(cell.indicator_id)
+            if ind:
+                cells_data[-1]["unit"] = ind.unit or ""
     
-    return param_indicators
+    return cells_data
 
-param_indicators = get_parameter_indicators()
+all_cells_data = get_all_cells_with_filters()
 
-# ── Categorize parameter indicators ─────────────────────────────────────────────
-def categorize_indicator(ind_name: str) -> str:
-    """Assign indicator to category based on INDICATOR_CATEGORIES."""
+# ── Categorize cells for display ────────────────────────────────────────────────
+def categorize_cell_by_indicator(cell_data):
+    """Assign cell to category based on its indicator name."""
+    ind_name = cell_data["indicator_name"]
     for category, keywords in INDICATOR_CATEGORIES.items():
         for kw in keywords:
             if kw.lower() in (ind_name or "").lower():
                 return category
     return "其他类"
 
-categorized_params = {}
-for ind_id, ind_data in param_indicators.items():
-    category = categorize_indicator(ind_data["name"])
-    if category not in categorized_params:
-        categorized_params[category] = []
-    categorized_params[category].append((ind_id, ind_data))
-
-# ── Left panel: Parameter quick view ────────────────────────────────────────────
+# ── Left panel: Parameter quick view with filters ───────────────────────────────
 st.markdown("---")
 st.markdown("### 📋 参数快览 & 快速修改")
 
 col_left, col_right = st.columns([1, 2])
 
 with col_left:
-    st.markdown("**参数指标（输入型单元格）**")
+    st.markdown("**筛选参数单元格**")
     
-    # Quick filters
+    # Compact filter controls in one row
+    col_search, col_type1, col_type2 = st.columns([2, 1, 1])
+    
+    with col_search:
+        name_filter = st.text_input(
+            "名称搜索",
+            placeholder="如：营业成本、利率",
+            key="param_name_filter",
+            label_visibility="collapsed"
+        )
+    
+    with col_type1:
+        value_type_filter = st.selectbox(
+            "值类型",
+            ["全部", "数值型", "文本型"],
+            key="param_value_type_filter",
+            label_visibility="collapsed"
+        )
+    
+    with col_type2:
+        formula_filter = st.selectbox(
+            "公式类型",
+            ["全部", "无公式(参数)", "有公式(计算)"],
+            key="param_formula_filter",
+            label_visibility="collapsed"
+        )
+    
+    # Category filter (below the row filters)
     filter_cat = st.selectbox(
         "分类筛选",
         ["全部"] + list(INDICATOR_CATEGORIES.keys()),
         key="param_cat_filter"
     )
     
-    # Display categorized parameters
-    selected_params = st.session_state.get("selected_params", {})
-    
-    for category, indicators in sorted(categorized_params.items()):
-        if filter_cat != "全部" and filter_cat != category:
+    # Apply filters to cells
+    filtered_cells = []
+    for cell_data in all_cells_data:
+        # Name filter
+        if name_filter and len(name_filter) >= 2:
+            search_lower = name_filter.lower()
+            if search_lower not in (cell_data["indicator_name"] or "").lower() and \
+               search_lower not in cell_data["cell_id"].lower() and \
+               search_lower not in str(cell_data["value"]).lower():
+                continue
+        
+        # Value type filter
+        if value_type_filter != "全部" and cell_data["value_type"] != value_type_filter:
             continue
         
-        with st.expander(f"📊 {category} ({len(indicators)}个)", expanded=(category == "收入类" or len(indicators) <= 3)):
-            for ind_id, ind_data in indicators:
-                ind_name = ind_data["name"]
-                st.markdown(f"**{ind_name}** ({ind_data['unit']})")
+        # Formula filter
+        if formula_filter == "无公式(参数)" and cell_data["has_formula"]:
+            continue
+        if formula_filter == "有公式(计算)" and not cell_data["has_formula"]:
+            continue
+        
+        # Category filter
+        if filter_cat != "全部":
+            cell_category = categorize_cell_by_indicator(cell_data)
+            if cell_category != filter_cat:
+                continue
+        
+        filtered_cells.append(cell_data)
+    
+    # Display filtered cells grouped by category
+    st.markdown(f"**找到 {len(filtered_cells)} 个单元格**")
+    
+    # Group filtered cells by category for display
+    categorized_filtered = {}
+    for cell_data in filtered_cells:
+        category = categorize_cell_by_indicator(cell_data)
+        if category not in categorized_filtered:
+            categorized_filtered[category] = []
+        categorized_filtered[category].append(cell_data)
+    
+    selected_params = st.session_state.get("selected_params", {})
+    
+    for category, cells in sorted(categorized_filtered.items()):
+        with st.expander(f"📊 {category} ({len(cells)}个)", expanded=(len(cells) <= 5)):
+            for cell_data in cells[:10]:
+                cell_id = cell_data["cell_id"]
+                current_val = cell_data["value"]
+                ind_name = cell_data["indicator_name"]
+                unit = cell_data["unit"]
+                has_formula = cell_data["has_formula"]
                 
-                # Show cells under this indicator
-                for cell_info in ind_data["cells"][:5]:
-                    cell_id = cell_info["cell_id"]
-                    current_val = cell_info["value"]
-                    
+                # Show cell info
+                st.markdown(f"**{ind_name or cell_id}** ({unit})")
+                st.caption(f"Cell: {cell_id} | 类型: {cell_data['value_type']} | 公式: {'是' if has_formula else '无'}")
+                
+                # Only allow modification for non-formula cells
+                if not has_formula:
                     # Input for quick modification
                     new_val_input = st.text_input(
-                        f"值: {current_val}",
+                        f"当前值: {current_val}",
                         value=str(current_val) if current_val is not None else "",
                         key=f"param_{cell_id}",
                         placeholder="输入新值",
@@ -133,6 +202,10 @@ with col_left:
                         selected_params[cell_id] = new_val_input
                     else:
                         selected_params.pop(cell_id, None)
+                else:
+                    # Formula cells: show formula but no modification
+                    st.info(f"公式: `{cell_data['formula']}`")
+                    st.caption("⚠️ 公式单元格不建议直接修改，请在右侧搜索标签页查看依赖关系")
                 
                 st.session_state["selected_params"] = selected_params
     
