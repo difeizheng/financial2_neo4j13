@@ -577,4 +577,35 @@
 - Test v33.0.0 in production
 - Monitor user feedback data
 - Analyze confidence score distribution
+
+## Session Summary (2026-05-08)
+
+### What We Did
+1. Restored project memory: v36.0.0 snapshot comparison enhancements
+2. Implemented v37.0.0 snapshot export feature based on user request
+3. Created new package: financial_kg/exporter/ (2 files)
+   - snapshot_exporter.py (159 lines): core export logic
+   - __init__.py: package exports
+4. Added tab5 "📤 导出" to pages/04_compare.py (+97 lines)
+5. Implemented two export modes:
+   - Values-only: replace formulas with computed values
+   - Formula-preserve: keep formulas, update parameters only
+6. Template upload pattern: avoid storing original Excel during parsing
+7. Fixed ISO date conversion bug: "2023-02-01T00:00:00" → datetime object
+8. Git commits: 3 commits (feature + bug fix + docs)
+9. Git tag: v37.0.0 created and pushed
+
+### Expected Impact
+- User workflow: Export recalculated snapshots back to Excel for reporting
+- Audit capability: Formula-preserve mode maintains calculation logic
+- Data quality: ISO dates display correctly in Excel (datetime objects)
+- Architecture: Reusable exporter module for future export formats
+- Performance: Template upload pattern saves storage (no original file persistence)
+
+### Next Session Focus
+- Test v37.0.0 with real snapshot data and Excel templates
+- Collect user feedback on export quality and Excel display
+- Verify date formatting across different Excel versions
+- Consider additional export formats (CSV, PDF report generation)
+- Optimize performance for large Excel files (10k+ cells)
 - Consider Phase 3 enhancements (based on feedback patterns)
