@@ -6,6 +6,7 @@ Supports two export modes:
 """
 from __future__ import annotations
 from io import BytesIO
+from datetime import datetime
 import openpyxl
 from openpyxl.utils import get_column_letter
 
@@ -29,6 +30,29 @@ def parse_cell_id(cell_id: str) -> tuple[str, int, str]:
     if len(parts) < 3:
         raise ValueError(f"Invalid cell_id format: {cell_id}")
     return parts[0], int(parts[1]), parts[2]
+
+
+def convert_iso_date_to_datetime(value):
+    """Convert ISO date string to datetime object for Excel.
+    
+    Args:
+        value: Could be ISO string like "2023-02-01T00:00:00" or other types
+    
+    Returns:
+        datetime object if ISO format detected, otherwise original value
+    
+    Example:
+        "2023-02-01T00:00:00" → datetime(2023, 2, 1)
+        "2023-08-31" → "2023-08-31" (no T00:00:00, keep as string)
+        123.45 → 123.45 (numeric value unchanged)
+    """
+    if isinstance(value, str) and "T00:00:00" in value:
+        try:
+            dt_str = value.replace("T00:00:00", "")
+            return datetime.fromisoformat(dt_str)
+        except Exception:
+            return value
+    return value
 
 
 def validate_template_sheets(template_bytes: bytes, snapshot: Snapshot) -> tuple[bool, list[str]]:
@@ -113,14 +137,16 @@ def export_snapshot_to_excel(
         target_cell = ws[cell_coord]
         
         if mode == "values_only":
-            target_cell.value = new_value
+            converted_value = convert_iso_date_to_datetime(new_value)
+            target_cell.value = converted_value
             stats["updated_cells"] += 1
         
         elif mode == "formula_preserve":
             if graph_cell and graph_cell.formula_raw:
                 stats["formula_preserved"] += 1
             else:
-                target_cell.value = new_value
+                converted_value = convert_iso_date_to_datetime(new_value)
+                target_cell.value = converted_value
                 stats["updated_cells"] += 1
     
     output_buffer = BytesIO()
