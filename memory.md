@@ -25,6 +25,15 @@
   * New modules: `financial_kg/exporter/snapshot_exporter.py` (131 lines)
   * Modified: `pages/04_compare.py` (+97 lines, -3 lines, now 463 lines total)
   * Git: a888353 "feat(compare): add snapshot export tab with two modes"
+- **Fixed: ISO Date String Conversion for Excel Export** (v37.0.0 patch)
+  * Problem: Date strings like "2023-02-01T00:00:00" display incorrectly in Excel
+  * Solution: Auto-detect ISO format and convert to datetime object
+  * New function: `convert_iso_date_to_datetime()` (23 lines)
+  * Conversion logic: detect "T00:00:00" marker → datetime.fromisoformat()
+  * openpyxl recognizes datetime objects → formats as Excel dates
+  * Applied in both export modes (values_only & formula_preserve)
+  * Git: 8f27fc4 "fix(exporter): convert ISO date strings to datetime for Excel"
+  * Files: 1 changed, 28 insertions(+), 2 deletions(-)
 - **Technical Implementation**:
   * Template upload: avoid storing original Excel during parsing
   * Cell ID parsing: "Sheet1_5_A" → (sheet, row, col_letter)
