@@ -29,6 +29,7 @@ from financial_kg.analysis.change_ranker import (
     get_change_category,
     get_change_color,
 )
+from financial_kg.exporter import export_snapshot_to_excel, validate_template_sheets
 
 st.set_page_config(page_title="快照对比", layout="wide")
 st.title("📊 快照对比 - 增强版")
@@ -94,11 +95,12 @@ snap_b_name = st.session_state.get("snap_b_name", "快照B")
 
 st.success(f"✅ 对比完成：{snap_a_name} vs {snap_b_name}")
 
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊 汇总概览",
     "🎯 关键变化",
     "📈 统计分析",
-    "🔍 详细分析"
+    "🔍 详细分析",
+    "📤 导出"
 ])
 
 with tab1:
@@ -364,3 +366,95 @@ with tab4:
                 if st.session_state.get("prop_truncated"):
                     st.warning(f"图谱已截断至 {st.session_state['prop_nodes']} 个节点（下游更多）")
                 components.html(st.session_state["prop_html"], height=780, scrolling=False)
+
+with tab5:
+    st.markdown("### 📤 导出快照结果")
+    
+    st.info("""
+    **使用说明：**
+    1. 上传原始Excel文件作为导出模板（与解析任务相同）
+    2. 选择导出模式生成Excel
+    3. 下载导出文件查看结果
+    
+    **注意：** 导出模板需要与原始解析文件完全一致（sheet名称、结构）
+    """)
+    
+    uploaded_template = st.file_uploader(
+        "上传原始Excel模板",
+        type=["xlsx", "xls"],
+        help="上传与解析任务相同的Excel文件"
+    )
+    
+    if uploaded_template:
+        from financial_kg.engine.snapshot import load_snapshot
+        
+        snap_b = load_snapshot(rec_b.filepath)
+        is_valid, missing_sheets = validate_template_sheets(
+            uploaded_template.getvalue(), snap_b
+        )
+        
+        if not is_valid:
+            st.warning(f"⚠️ 模板缺少以下sheet：{', '.join(missing_sheets)}，部分单元格将跳过")
+        else:
+            st.success(f"✅ 模板验证通过：{len(snap_b.values)} 个单元格待更新")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**模式 1：全量值导出**")
+            st.caption("所有单元格显示计算结果，公式被替换为值")
+            
+            if st.button("生成全量值 Excel", key="export_values", type="primary"):
+                with st.spinner("导出中..."):
+                    try:
+                        exported_bytes, stats = export_snapshot_to_excel(
+                            uploaded_template.getvalue(),
+                            snap_b,
+                            graph,
+                            mode="values_only"
+                        )
+                        st.session_state["exported_values_bytes"] = exported_bytes
+                        st.success(f"✅ 导出完成：更新 {stats['updated_cells']} 个单元格")
+                    except Exception as e:
+                        st.error(f"导出失败：{e}")
+                        import traceback
+                        st.code(traceback.format_exc())
+            
+            if "exported_values_bytes" in st.session_state:
+                st.download_button(
+                    "📥 下载全量值 Excel",
+                    data=st.session_state["exported_values_bytes"],
+                    file_name=f"{snap_b_name}_全量值.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+        
+        with col2:
+            st.markdown("**模式 2：公式勾稽导出**")
+            st.caption("保留原始公式，更新参数单元格，打开时自动重算")
+            
+            if st.button("生成公式勾稽 Excel", key="export_formula", type="primary"):
+                with st.spinner("导出中..."):
+                    try:
+                        exported_bytes, stats = export_snapshot_to_excel(
+                            uploaded_template.getvalue(),
+                            snap_b,
+                            graph,
+                            mode="formula_preserve"
+                        )
+                        st.session_state["exported_formula_bytes"] = exported_bytes
+                        st.success(
+                            f"✅ 导出完成：更新 {stats['updated_cells']} 个参数单元格，"
+                            f"保留 {stats['formula_preserved']} 个公式"
+                        )
+                    except Exception as e:
+                        st.error(f"导出失败：{e}")
+                        import traceback
+                        st.code(traceback.format_exc())
+            
+            if "exported_formula_bytes" in st.session_state:
+                st.download_button(
+                    "📥 下载公式勾稽 Excel",
+                    data=st.session_state["exported_formula_bytes"],
+                    file_name=f"{snap_b_name}_公式勾稽.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
