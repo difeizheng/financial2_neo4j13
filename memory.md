@@ -14,6 +14,40 @@
 
 ## Progress
 
+### Done (v37.0.0 - 2026-05-08)
+- **Added: Snapshot Comparison Export Feature**
+  * New tab5 "📤 导出" in snapshot comparison page
+  * Two export modes: values-only vs formula-preserve
+  * Template upload pattern: user uploads original Excel as template
+  * Export values-only mode: replace all formulas with computed values
+  * Export formula-preserve mode: keep formulas, update parameter cells only
+  * Template validation: check sheet existence, warn if missing
+  * New modules: `financial_kg/exporter/snapshot_exporter.py` (131 lines)
+  * Modified: `pages/04_compare.py` (+97 lines, -3 lines, now 463 lines total)
+  * Git: a888353 "feat(compare): add snapshot export tab with two modes"
+- **Technical Implementation**:
+  * Template upload: avoid storing original Excel during parsing
+  * Cell ID parsing: "Sheet1_5_A" → (sheet, row, col_letter)
+  * Merged cell handling: skip child cells, update parent only
+  * Formula detection: distinguish parameter cells vs formula cells via graph metadata
+  * Statistics tracking: updated_cells, formula_preserved, skipped_merged, missing_sheet_cells
+  * BytesIO pattern: openpyxl loads/writes Excel in memory (no temp files)
+- **Key UX Improvements**:
+  * Dual workflow: upload template → generate → download
+  * Visual feedback: sheet validation status, cell update counts
+  * Error handling: detailed traceback on export failure
+  * Download buttons: separate for each export mode
+  * File naming: auto-generated with snapshot name + mode suffix
+- **Module Architecture**:
+  * `financial_kg/exporter/`: new package for export utilities
+    - `snapshot_exporter.py`: core export logic
+    - `__init__.py`: package exports
+  * Functions:
+    - `parse_cell_id()`: cell ID string parsing
+    - `validate_template_sheets()`: template validation
+    - `export_snapshot_to_excel()`: main export function (two modes)
+- **Next**: Test with real snapshot data, collect user feedback, optimize performance for large files
+
 ### Done (v36.0.0 - 2026-05-07)
 - **Enhanced: Snapshot Comparison Page with Advanced Analytics**
   * Complete redesign with 4 tabs: Overview, Key Changes, Stats, Details
@@ -395,6 +429,17 @@
 - `memory.md`: Session memory for context preservation
 
 ## Version History
+
+- **v37.0.0** (2026-05-08): Snapshot comparison export feature
+  * New export tab: tab5 "📤 导出" in snapshot comparison page
+  * Two export modes: values-only (replace formulas) vs formula-preserve (keep formulas)
+  * Template upload pattern: user uploads original Excel as template during export
+  * Template validation: check sheet existence, warn if missing sheets
+  * Cell handling: merged cells (skip children), formula cells (detect via graph)
+  * Statistics tracking: updated_cells, formula_preserved, skipped_merged
+  * New package: `financial_kg/exporter/` (snapshot_exporter.py 131 lines)
+  * Files: 3 changed, 232 insertions(+), 3 deletions(-)
+  * UI: dual-column layout, download buttons, file naming with mode suffix
 
 - **v36.0.0** (2026-05-07): Enhanced snapshot comparison with advanced analytics
   * Complete redesign: 4 tabs (Overview, Key Changes, Stats, Details)
