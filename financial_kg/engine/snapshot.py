@@ -44,7 +44,14 @@ def create_snapshot(
     filename = f"{timestamp}_{name}.json"
     filepath = os.path.join(snapshots_dir, task_id, filename)
 
-    values = {cell_id: _serialize_value(cell.value) for cell_id, cell in graph.cells.items()}
+    # Only save parameter cells (numeric cells, excluding formula and string cells)
+    # String cells are labels/titles, not parameters - no need to snapshot
+    # Formula cells will be recalculated when Excel opens - no need to snapshot
+    values = {
+        cell_id: _serialize_value(cell.value)
+        for cell_id, cell in graph.cells.items()
+        if cell.data_type == "number"
+    }
 
     payload = {
         "task_id": task_id,

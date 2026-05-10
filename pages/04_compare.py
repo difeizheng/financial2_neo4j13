@@ -29,7 +29,7 @@ from financial_kg.analysis.change_ranker import (
     get_change_category,
     get_change_color,
 )
-from financial_kg.exporter import export_snapshot_to_excel, validate_template_sheets
+from financial_kg.exporter import export_snapshot_to_excel, validate_template_sheets, export_snapshot_via_xml
 
 st.set_page_config(page_title="快照对比", layout="wide")
 st.title("📊 快照对比 - 增强版")
@@ -373,8 +373,13 @@ with tab5:
     st.info("""
     **使用说明：**
     1. 上传原始Excel文件作为导出模板（与解析任务相同）
-    2. 选择导出模式生成Excel
-    3. 下载导出文件查看结果
+    2. 选择导出方法（推荐XML方法，保留公式缓存值）
+    3. 选择导出模式生成Excel
+    4. 下载导出文件查看结果
+    
+    **导出方法说明：**
+    - **XML方法**：直接操作Excel内部XML，保留公式缓存值，打开无需重新计算
+    - **openpyxl方法**：传统方式，丢失公式缓存值，打开时Excel会重新计算
     
     **注意：** 导出模板需要与原始解析文件完全一致（sheet名称、结构）
     """)
@@ -398,54 +403,85 @@ with tab5:
         else:
             st.success(f"✅ 模板验证通过：{len(snap_b.values)} 个单元格待更新")
         
+        # Export method selection
+        export_method = st.radio(
+            "导出方法",
+            options=["xml", "openpyxl"],
+            format_func=lambda x: "XML方法（推荐，保留缓存值）" if x == "xml" else "openpyxl方法",
+            help="XML方法保留公式缓存值，打开无需重新计算；openpyxl方法会丢失缓存值"
+        )
+        
         col1, col2 = st.columns(2)
         
         with col1:
             st.markdown("**模式 1：全量值导出**")
-            st.caption("所有单元格显示计算结果，公式被替换为值")
+            st.caption("所有单元格显示计算结果，公式被替换为值（仅openpyxl支持）")
             
-            if st.button("生成全量值 Excel", key="export_values", type="primary"):
-                with st.spinner("导出中..."):
-                    try:
-                        exported_bytes, stats = export_snapshot_to_excel(
-                            uploaded_template.getvalue(),
-                            snap_b,
-                            graph,
-                            mode="values_only"
-                        )
-                        st.session_state["exported_values_bytes"] = exported_bytes
-                        st.success(f"✅ 导出完成：更新 {stats['updated_cells']} 个单元格")
-                    except Exception as e:
-                        st.error(f"导出失败：{e}")
-                        import traceback
-                        st.code(traceback.format_exc())
-            
-            if "exported_values_bytes" in st.session_state:
-                st.download_button(
-                    "📥 下载全量值 Excel",
-                    data=st.session_state["exported_values_bytes"],
-                    file_name=f"{snap_b_name}_全量值.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+            if export_method == "xml":
+                st.warning("⚠️ XML方法不支持全量值导出，请使用openpyxl方法")
+            else:
+                if st.button("生成全量值 Excel", key="export_values", type="primary"):
+                    with st.spinner("导出中..."):
+                        try:
+                            exported_bytes, stats = export_snapshot_to_excel(
+                                uploaded_template.getvalue(),
+                                snap_b,
+                                graph,
+                                mode="values_only"
+                            )
+                            st.session_state["exported_values_bytes"] = exported_bytes
+                            st.success(f"✅ 导出完成：更新 {stats['updated_cells']} 个单元格")
+                        except Exception as e:
+                            st.error(f"导出失败：{e}")
+                            import traceback
+                            st.code(traceback.format_exc())
+                
+                if "exported_values_bytes" in st.session_state:
+                    st.download_button(
+                        "📥 下载全量值 Excel",
+                        data=st.session_state["exported_values_bytes"],
+                        file_name=f"{snap_b_name}_全量值.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
         
         with col2:
             st.markdown("**模式 2：公式勾稽导出**")
-            st.caption("保留原始公式，更新参数单元格，打开时自动重算")
+            st.caption("保留原始公式，更新参数单元格")
+            if export_method == "xml":
+                st.caption("✓ 保留公式缓存值，打开无需重新计算")
+            else:
+                st.caption("⚠ 缓存值丢失，打开时Excel会重新计算")
             
             if st.button("生成公式勾稽 Excel", key="export_formula", type="primary"):
                 with st.spinner("导出中..."):
                     try:
-                        exported_bytes, stats = export_snapshot_to_excel(
-                            uploaded_template.getvalue(),
-                            snap_b,
-                            graph,
-                            mode="formula_preserve"
-                        )
-                        st.session_state["exported_formula_bytes"] = exported_bytes
-                        st.success(
-                            f"✅ 导出完成：更新 {stats['updated_cells']} 个参数单元格，"
-                            f"保留 {stats['formula_preserved']} 个公式"
-                        )
+                        if export_method == "xml":
+                            # Use XML-based export (preserves cached values)
+                            exported_bytes, stats = export_snapshot_via_xml(
+                                uploaded_template.getvalue(),
+                                snap_b,
+                                graph,
+                                mode="formula_preserve"
+                            )
+                            st.session_state["exported_formula_bytes"] = exported_bytes
+                            st.success(
+                                f"✅ 导出完成（XML方法）：更新 {stats['updated_cells']} 个数值单元格，"
+                                f"跳过 {stats['skipped_string']} 个文本单元格，"
+                                f"跳过 {stats['skipped_formula']} 个公式单元格（保留缓存值）"
+                            )
+                        else:
+                            # Use openpyxl export (loses cached values)
+                            exported_bytes, stats = export_snapshot_to_excel(
+                                uploaded_template.getvalue(),
+                                snap_b,
+                                graph,
+                                mode="formula_preserve"
+                            )
+                            st.session_state["exported_formula_bytes"] = exported_bytes
+                            st.success(
+                                f"✅ 导出完成（openpyxl）：更新 {stats['updated_cells']} 个参数单元格，"
+                                f"保留 {stats['formula_preserved']} 个公式（缓存值丢失）"
+                            )
                     except Exception as e:
                         st.error(f"导出失败：{e}")
                         import traceback

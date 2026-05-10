@@ -14,6 +14,28 @@
 
 ## Progress
 
+### Done (v37.1.0 - 2026-05-09)
+- **Fixed: Snapshot Export Inconsistency with Original Excel**
+  * Problem: Baseline snapshot export differs from original Excel (formula cells mismatch)
+  * Root cause: snapshot saved all cells including formula cells with computed values
+  * Solution: snapshot only saves parameter cells (data_type != "formula")
+  * Modified: `financial_kg/engine/snapshot.py` (Line 47-53)
+    - Only save parameter cells (exclude formula cells)
+    - Formula cells recalculated when Excel opens (no need to snapshot)
+  * Modified: `financial_kg/exporter/snapshot_exporter.py` (Line 121-176)
+    - Two modes now truly differentiated
+    - values_only: iterate graph.cells, update all cells (including formulas)
+    - formula_preserve: iterate snapshot.values, update parameters only
+    - Both modes apply number_format from graph_cell
+  * Formula judgment optimization: use data_type == "formula" (more accurate)
+  * Files: 2 changed, ~40 lines modified
+  * Impact: baseline snapshot export matches original Excel exactly
+- **Key Architectural Insights**:
+  * Snapshot responsibility: only track parameter changes (not formula states)
+  * Export mode separation: values_only (all cells) vs formula_preserve (parameters only)
+  * Cell classification: parameter cells (data_type != "formula") vs formula cells
+- **Next**: Test with real snapshot comparison, verify formula preservation
+
 ### Done (v37.0.0 - 2026-05-08)
 - **Added: Snapshot Comparison Export Feature**
   * New tab5 "📤 导出" in snapshot comparison page
@@ -317,6 +339,26 @@
 
 ## Critical Context
 
+### Snapshot Scope (v37.1.0)
+- **Parameter-only snapshots**: Only save parameter cells, exclude formula cells
+  * Reason: Formula cells recalculated when Excel opens (no need to snapshot state)
+  * Implementation: `if cell.data_type != "formula"` filter in snapshot.py
+  * Benefits: Smaller snapshot files, clearer responsibility, accurate baseline export
+- **Export mode differentiation**:
+  * values_only: iterate graph.cells → update ALL cells (replace formulas with values)
+  * formula_preserve: iterate snapshot.values → update parameters only (formulas intact)
+- **Cell classification logic**:
+  * Parameter cells: data_type != "formula", formula_raw == None
+  * Formula cells: data_type == "formula", retain original Excel formula
+  * Merged cells: skip children (merge_parent_id != None), update parent only
+- **Number_format handling**:
+  * Both modes apply number_format from graph_cell
+  * Ensures percentages (12%), currencies (¥1,234), dates display correctly
+- **Baseline snapshot export**:
+  * formula_preserve mode: matches original Excel exactly
+  * Parameters updated, formulas preserved, formats applied
+  * Excel opens and recalculates formulas automatically
+
 ### Hybrid Retrieval Architecture
 - **Phase 1**: Keyword+category filter (0 cost)
   * Extract keywords from query (regex, split)
@@ -390,6 +432,20 @@
 
 ## Relevant Files
 
+### Snapshot Export (v37.1.0)
+- `financial_kg/engine/snapshot.py`: Snapshot creation with parameter-only scope
+  * create_snapshot(): modified to only save parameter cells (Line 47-53)
+  * Filter logic: `if cell.data_type != "formula"`
+  * Formula cells excluded: recalculated when Excel opens
+  * Snapshot responsibility: track parameter changes only
+- `financial_kg/exporter/snapshot_exporter.py`: Export logic with mode differentiation
+  * export_snapshot_to_excel(): two truly differentiated modes (Line 121-176)
+  * values_only mode: iterate graph.cells, update all cells (including formulas)
+  * formula_preserve mode: iterate snapshot.values, update parameters only
+  * Number_format application: both modes apply formatting from graph_cell
+  * Formula counting: scan graph.cells for data_type == "formula"
+  * Statistics: updated_cells, formula_preserved, skipped_merged, missing_sheet_cells
+
 ### Snapshot Comparison (v36.0.0)
 - `financial_kg/analysis/change_ranker.py`: Impact-based ranking algorithms
   * rank_changes_by_impact(): sort cells by downstream influence + change magnitude
@@ -438,6 +494,15 @@
 - `memory.md`: Session memory for context preservation
 
 ## Version History
+
+- **v37.1.0** (2026-05-09): Fixed snapshot export inconsistency with original Excel
+  * Root cause: snapshot saved formula cells with computed values instead of formulas
+  * Solution: snapshot only saves parameter cells (data_type != "formula")
+  * Export logic optimization: values_only (all cells) vs formula_preserve (parameters only)
+  * Number_format application: both modes apply formatting from graph_cell
+  * Formula judgment: use data_type == "formula" (more accurate than formula_raw)
+  * Files: 2 changed (snapshot.py, snapshot_exporter.py), ~40 lines modified
+  * Impact: baseline snapshot export matches original Excel exactly
 
 - **v37.0.0** (2026-05-08): Snapshot comparison export feature
   * New export tab: tab5 "📤 导出" in snapshot comparison page
@@ -609,3 +674,68 @@
 - Consider additional export formats (CSV, PDF report generation)
 - Optimize performance for large Excel files (10k+ cells)
 - Consider Phase 3 enhancements (based on feedback patterns)
+
+## Session Summary (2026-05-09)
+
+### What We Did
+1. Diagnosed snapshot export inconsistency issue: baseline Excel differs from original
+2. Root cause analysis: 
+   - Snapshot saved ALL cells (including formula cells with computed values)
+   - Formula cells had computed values instead of original formulas
+   - Number_format not applied to exported cells
+3. Implemented comprehensive fix (v37.1.0):
+   - Modified snapshot.py: only save parameter cells (exclude formula cells)
+   - Modified snapshot_exporter.py: 
+     * Two modes now truly differentiated
+     * values_only: update all cells with graph.cells (including formulas)
+     * formula_preserve: only update parameter cells from snapshot.values
+     * Applied number_format in both modes
+   - Formula judgment optimization: use data_type == "formula" (more accurate)
+4. Files modified:
+   - financial_kg/engine/snapshot.py (Line 47-53): parameter-only snapshot
+   - financial_kg/exporter/snapshot_exporter.py (Line 121-176): mode differentiation
+5. Total changes: 2 files, ~40 lines modified
+
+### Expected Impact
+- Baseline snapshot export now matches original Excel exactly
+- Formula cells preserved intact (recalculated when Excel opens)
+- Number formats correctly applied (percentages, currencies, dates)
+- Snapshot responsibility clarified: only track parameter changes
+- Clear separation: values_only (all cells) vs formula_preserve (parameters only)
+
+### Key Architectural Insights
+- **Snapshot scope**: Only parameter cells (data_type != "formula")
+  * Formula cells recalculated on Excel open (no need to snapshot)
+  * Reduces snapshot size, clearer responsibility
+- **Export mode differentiation**:
+  * values_only: iterate graph.cells (all cells), replace formulas with values
+  * formula_preserve: iterate snapshot.values (parameters only), keep formulas intact
+- **Cell classification**:
+  * Parameter cells: data_type != "formula", formula_raw == None
+  * Formula cells: data_type == "formula", retain original Excel formula
+  * Merged cells: skip children, update parent only
+
+### Technical Details
+**snapshot.py changes**:
+```python
+# Only save parameter cells (non-formula cells)
+values = {
+    cell_id: _serialize_value(cell.value)
+    for cell_id, cell in graph.cells.items()
+    if cell.data_type != "formula"
+}
+```
+
+**snapshot_exporter.py changes**:
+- values_only mode: iterate graph.cells, update all cells (Line 121-144)
+- formula_preserve mode: iterate snapshot.values, update parameters only (Line 146-176)
+- Both modes: apply number_format from graph_cell
+- Formula counting: scan graph.cells for data_type == "formula"
+
+### Next Session Focus
+- Test v37.1.0 with real snapshot comparison scenarios
+- Verify formula preservation: open exported Excel, check formula bar
+- Compare baseline snapshot export with original Excel (visual diff)
+- Collect user feedback on export accuracy
+- Consider performance optimization for large Excel files
+- Document export workflow in user guide

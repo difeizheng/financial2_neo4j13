@@ -118,36 +118,62 @@ def export_snapshot_to_excel(
         "missing_sheet_cells": 0,
     }
     
-    for cell_id, new_value in snapshot.values.items():
-        sheet_name, row, col_letter = parse_cell_id(cell_id)
-        
-        if sheet_name not in wb.sheetnames:
-            stats["missing_sheet_cells"] += 1
-            continue
-        
-        ws = wb[sheet_name]
-        cell_coord = f"{col_letter}{row}"
-        
-        graph_cell = graph.cells.get(cell_id)
-        
-        if graph_cell and graph_cell.is_merged and graph_cell.merge_parent_id:
-            stats["skipped_merged"] += 1
-            continue
-        
-        target_cell = ws[cell_coord]
-        
-        if mode == "values_only":
+    if mode == "values_only":
+        # Values-only mode: update all cells (including formula cells) with computed values
+        for cell_id, graph_cell in graph.cells.items():
+            sheet_name, row, col_letter = parse_cell_id(cell_id)
+            
+            if sheet_name not in wb.sheetnames:
+                stats["missing_sheet_cells"] += 1
+                continue
+            
+            ws = wb[sheet_name]
+            cell_coord = f"{col_letter}{row}"
+            
+            if graph_cell and graph_cell.is_merged and graph_cell.merge_parent_id:
+                stats["skipped_merged"] += 1
+                continue
+            
+            target_cell = ws[cell_coord]
+            
+            # Update value and apply number_format
+            converted_value = convert_iso_date_to_datetime(graph_cell.value)
+            target_cell.value = converted_value
+            if graph_cell and graph_cell.number_format:
+                target_cell.number_format = graph_cell.number_format
+            stats["updated_cells"] += 1
+    
+    elif mode == "formula_preserve":
+        # Formula-preserve mode: only update parameter cells, keep formulas intact
+        for cell_id, new_value in snapshot.values.items():
+            sheet_name, row, col_letter = parse_cell_id(cell_id)
+            
+            if sheet_name not in wb.sheetnames:
+                stats["missing_sheet_cells"] += 1
+                continue
+            
+            ws = wb[sheet_name]
+            cell_coord = f"{col_letter}{row}"
+            
+            graph_cell = graph.cells.get(cell_id)
+            
+            if graph_cell and graph_cell.is_merged and graph_cell.merge_parent_id:
+                stats["skipped_merged"] += 1
+                continue
+            
+            target_cell = ws[cell_coord]
+            
+            # Only update parameter cells (snapshot.values only contains non-formula cells now)
             converted_value = convert_iso_date_to_datetime(new_value)
             target_cell.value = converted_value
+            if graph_cell and graph_cell.number_format:
+                target_cell.number_format = graph_cell.number_format
             stats["updated_cells"] += 1
         
-        elif mode == "formula_preserve":
-            if graph_cell and graph_cell.formula_raw:
+        # Count formula cells preserved (not in snapshot.values, remain intact in template)
+        for cell_id, graph_cell in graph.cells.items():
+            if graph_cell.data_type == "formula":
                 stats["formula_preserved"] += 1
-            else:
-                converted_value = convert_iso_date_to_datetime(new_value)
-                target_cell.value = converted_value
-                stats["updated_cells"] += 1
     
     output_buffer = BytesIO()
     wb.save(output_buffer)
